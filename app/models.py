@@ -23,6 +23,27 @@ class Classification:
 
 
 @dataclass(frozen=True)
+class ExtractedEntities:
+    """Nullable entity output; unresolved fields stay explicit."""
+
+    customer_name: str | None
+    customer_external_id: str | None
+    account_id: str | None
+    order_id: str | None
+    shipment_id: str | None
+    tracking_number: str | None
+    requested_action: str | None
+    promised_date: str | None
+    confidence: float
+    evidence_message_ids: list[str]
+    unresolved_fields: list[str]
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("entity confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True)
 class NormalizedInboundEvent:
     """Provider-neutral inbound event matching the PRD contract."""
 

@@ -7,14 +7,26 @@ from pydantic import BaseModel, Field
 
 from app.fixture import create_demo_inbox
 from app.ingestion import (
+    ApprovalRequiredError,
     ConversationNotFoundError,
+    EvidenceRequiredError,
     InMemoryInbox,
+    ResourceNotFoundError,
     VersionConflictError,
 )
 
 
 class AiRunRequest(BaseModel):
-    action: Literal["classify", "classify_and_route", "route"]
+    action: Literal[
+        "classify",
+        "classify_and_route",
+        "route",
+        "extract",
+        "retrieve",
+        "summarize",
+        "draft",
+    ]
+    workspace_id: str = "demo-workspace"
 
 
 class AssignmentRequest(BaseModel):
@@ -37,6 +49,26 @@ class CommentRequest(BaseModel):
     actor_id: str = Field(min_length=1)
     client_request_id: str | None = Field(default=None, min_length=1)
     expected_version: int = Field(ge=1)
+
+
+class DraftEditRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    body: str = Field(min_length=1, max_length=12000)
+    actor_id: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
+class DraftApprovalRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    actor_id: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
+class DraftSendRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    actor_id: str = Field(min_length=1)
+    approval_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
 
 
 def _error_response(
@@ -116,6 +148,43 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             extra={"currentVersion": exc.current_version},
         )
 
+    @application.exception_handler(ResourceNotFoundError)
+    async def resource_not_found_handler(
+        request: Request,
+        exc: ResourceNotFoundError,
+    ) -> JSONResponse:
+        del request, exc
+        return _error_response(
+            status_code=404,
+            code="not_found",
+            message="draft_not_found",
+        )
+
+    @application.exception_handler(ApprovalRequiredError)
+    async def approval_required_handler(
+        request: Request,
+        exc: ApprovalRequiredError,
+    ) -> JSONResponse:
+        del request
+        return _error_response(
+            status_code=409,
+            code="approval_required",
+            message=str(exc),
+        )
+
+    @application.exception_handler(EvidenceRequiredError)
+    async def evidence_required_handler(
+        request: Request,
+        exc: EvidenceRequiredError,
+    ) -> JSONResponse:
+        del request
+        return _error_response(
+            status_code=422,
+            code="evidence_required",
+            message="draft_contains_unsupported_claim",
+            fields={"missing_evidence": ",".join(exc.missing_fields)},
+        )
+
     @application.get("/healthz")
     def health() -> dict[str, object]:
         return {"status": "ok", "mode": "fixture"}
@@ -161,8 +230,11 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
         workspace_id: str = "demo-workspace",
     ) -> dict[str, object]:
         repository = get_repository()
-        conversation = repository.get_conversation(conversation_id)
-        if conversation is None or conversation["workspace_id"] != workspace_id:
+        conversation = repository.get_conversation(
+            conversation_id,
+            workspace_id=workspace_id,
+        )
+        if conversation is None:
             raise HTTPException(status_code=404, detail="conversation_not_found")
         return conversation
 
@@ -170,13 +242,13 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
     def run_ai(
         conversation_id: str,
         request: AiRunRequest,
-        workspace_id: str = "demo-workspace",
+        workspace_id: str | None = None,
     ) -> dict[str, object]:
         repository = get_repository()
         return repository.run_ai(
             conversation_id,
             action=request.action,
-            workspace_id=workspace_id,
+            workspace_id=workspace_id or request.workspace_id,
         )
 
     @application.post("/api/v1/conversations/{conversation_id}/assign")
@@ -220,6 +292,51 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             client_request_id=request.client_request_id
             or f"comment-{uuid4()}",
             expected_version=request.expected_version,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.get("/api/v1/drafts/{draft_id}")
+    def get_draft(
+        draft_id: str,
+        workspace_id: str = "demo-workspace",
+    ) -> dict[str, object]:
+        return get_repository().get_draft(draft_id, workspace_id=workspace_id)
+
+    @application.patch("/api/v1/drafts/{draft_id}")
+    def edit_draft(
+        draft_id: str,
+        request: DraftEditRequest,
+    ) -> dict[str, object]:
+        return get_repository().edit_draft(
+            draft_id,
+            body=request.body,
+            expected_version=request.expected_version,
+            actor_id=request.actor_id,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.post("/api/v1/drafts/{draft_id}/approve")
+    def approve_draft(
+        draft_id: str,
+        request: DraftApprovalRequest,
+    ) -> dict[str, object]:
+        return get_repository().approve_draft(
+            draft_id,
+            expected_version=request.expected_version,
+            actor_id=request.actor_id,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.post("/api/v1/drafts/{draft_id}/send")
+    def send_draft(
+        draft_id: str,
+        request: DraftSendRequest,
+    ) -> dict[str, object]:
+        return get_repository().send_draft(
+            draft_id,
+            approval_id=request.approval_id,
+            idempotency_key=request.idempotency_key,
+            actor_id=request.actor_id,
             workspace_id=request.workspace_id,
         )
 

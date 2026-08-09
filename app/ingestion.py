@@ -2,7 +2,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from threading import RLock
 
-from app.models import Classification, IngestResult, NormalizedInboundEvent
+from app.models import Classification, ExtractedEntities, IngestResult, NormalizedInboundEvent
 
 
 class VersionConflictError(Exception):
@@ -14,6 +14,21 @@ class VersionConflictError(Exception):
 
 class ConversationNotFoundError(Exception):
     pass
+
+
+class ResourceNotFoundError(Exception):
+    pass
+
+
+class ApprovalRequiredError(Exception):
+    def __init__(self, message: str = "current_draft_requires_exact_approval") -> None:
+        super().__init__(message)
+
+
+class EvidenceRequiredError(Exception):
+    def __init__(self, missing_fields: list[str]) -> None:
+        super().__init__("missing_evidence")
+        self.missing_fields = missing_fields
 
 
 _ASSIGNMENT_RULES = [
@@ -52,6 +67,9 @@ class InMemoryInbox:
         self._message_to_conversation: dict[tuple[str, str, str], str] = {}
         self._conversations: dict[str, dict[str, object]] = {}
         self._comment_commands: dict[tuple[str, str, str], dict[str, object]] = {}
+        self._outbound_actions: dict[
+            tuple[str, str, str], dict[str, object]
+        ] = {}
         self._lock = RLock()
 
     def ingest(self, event: NormalizedInboundEvent) -> IngestResult:
@@ -101,6 +119,12 @@ class InMemoryInbox:
                         "provider_message_id": event.provider_message_id,
                     },
                 )
+                draft = conversation.get("draft")
+                if isinstance(draft, dict):
+                    draft["state"] = "approval_required"
+                    draft["approval"] = None
+                    draft["invalidated_reason"] = "new_inbound_message"
+                    draft["updated_at"] = event.received_at
             else:
                 self._conversations[conversation_id] = self._new_conversation(
                     conversation_id,
@@ -114,9 +138,19 @@ class InMemoryInbox:
             conversation_id=conversation_id,
         )
 
-    def get_conversation(self, conversation_id: str) -> dict[str, object] | None:
+    def get_conversation(
+        self,
+        conversation_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object] | None:
         with self._lock:
             conversation = self._conversations.get(conversation_id)
+            if (
+                conversation is not None
+                and workspace_id is not None
+                and conversation["workspace_id"] != workspace_id
+            ):
+                conversation = None
             return deepcopy(conversation) if conversation is not None else None
 
     def list_conversations(
@@ -157,11 +191,41 @@ class InMemoryInbox:
         action: str,
         workspace_id: str | None = None,
     ) -> dict[str, object]:
-        if action not in {"classify", "classify_and_route", "route"}:
+        if action not in {
+            "classify",
+            "classify_and_route",
+            "route",
+            "extract",
+            "retrieve",
+            "summarize",
+            "draft",
+        }:
             raise ValueError(f"unsupported_ai_action:{action}")
 
         with self._lock:
             conversation = self._require_conversation(conversation_id, workspace_id)
+            if action in {"extract", "draft"}:
+                self._ensure_extracted_entities(conversation)
+            if action in {"retrieve", "summarize", "draft"}:
+                self._ensure_context(conversation)
+            if action in {"summarize", "draft"}:
+                self._ensure_summary(conversation)
+
+            if action == "draft":
+                self._ensure_draft(conversation)
+                return {
+                    "job_id": f"job-{action}-{conversation_id}",
+                    "state": "completed",
+                    "input_version": conversation["version"],
+                    "version": conversation["version"],
+                    "extracted_entities": deepcopy(
+                        conversation["extracted_entities"]
+                    ),
+                    "context": deepcopy(conversation["context"]),
+                    "summary": deepcopy(conversation["summary"]),
+                    "draft": deepcopy(conversation["draft"]),
+                }
+
             classification = conversation.get("classification")
             route_suggestion = None
             changed = False
@@ -205,6 +269,145 @@ class InMemoryInbox:
                 "classification": classification,
                 "route_suggestion": route_suggestion,
             }
+
+    def edit_draft(
+        self,
+        draft_id: str,
+        *,
+        body: str,
+        expected_version: int,
+        actor_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            conversation, draft = self._require_draft(draft_id, workspace_id)
+            self._check_version(draft, expected_version)
+            draft["body"] = body
+            draft["version"] = int(draft["version"]) + 1
+            draft["state"] = "approval_required"
+            draft["approval"] = None
+            draft["invalidated_reason"] = "draft_edited"
+            draft["updated_at"] = "2026-08-09T00:00:00+00:00"
+            self._append_activity(
+                conversation,
+                event_type="draft_edited",
+                actor={"type": "user", "id": actor_id},
+                payload={
+                    "draft_id": draft_id,
+                    "draft_version": draft["version"],
+                },
+            )
+            conversation["version"] = int(conversation["version"]) + 1
+            draft["conversation_version"] = conversation["version"]
+            return deepcopy(draft)
+
+    def approve_draft(
+        self,
+        draft_id: str,
+        *,
+        expected_version: int,
+        actor_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            conversation, draft = self._require_draft(draft_id, workspace_id)
+            self._check_version(draft, expected_version)
+            self._validate_draft_evidence(draft)
+            approval_id = f"approval-{draft_id}-v{draft['version']}"
+            draft["state"] = "approved"
+            draft["invalidated_reason"] = None
+            draft["approval"] = {
+                "approval_id": approval_id,
+                "draft_version": draft["version"],
+                "approved_by": actor_id,
+                "approved_at": "2026-08-09T00:00:00+00:00",
+            }
+            draft["updated_at"] = "2026-08-09T00:00:00+00:00"
+            self._append_activity(
+                conversation,
+                event_type="draft_approved",
+                actor={"type": "user", "id": actor_id},
+                payload={
+                    "draft_id": draft_id,
+                    "draft_version": draft["version"],
+                    "approval_id": approval_id,
+                },
+            )
+            conversation["version"] = int(conversation["version"]) + 1
+            draft["conversation_version"] = conversation["version"]
+            return {
+                **deepcopy(draft["approval"]),
+                "draft_id": draft_id,
+                "state": draft["state"],
+                "conversation_version": conversation["version"],
+            }
+
+    def send_draft(
+        self,
+        draft_id: str,
+        *,
+        approval_id: str,
+        idempotency_key: str,
+        actor_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        command_key = (workspace_id or "", draft_id, idempotency_key)
+        with self._lock:
+            if command_key in self._outbound_actions:
+                return deepcopy(self._outbound_actions[command_key])
+            conversation, draft = self._require_draft(draft_id, workspace_id)
+            approval = draft.get("approval")
+            if (
+                draft.get("state") != "approved"
+                or not isinstance(approval, dict)
+                or approval.get("approval_id") != approval_id
+                or approval.get("draft_version") != draft.get("version")
+            ):
+                raise ApprovalRequiredError()
+
+            action = {
+                "action_id": f"outbound-{draft_id}-v{draft['version']}",
+                "workspace_id": conversation["workspace_id"],
+                "conversation_id": conversation["id"],
+                "draft_id": draft_id,
+                "draft_version": draft["version"],
+                "connector": "fixture_only",
+                "approved_by": approval["approved_by"],
+                "approved_at": approval["approved_at"],
+                "requested_by": actor_id,
+                "idempotency_key": idempotency_key,
+                "provider_message_id": f"fixture-outbound-{draft_id}",
+                "state": "sent",
+                "sent_at": "2026-08-09T00:00:00+00:00",
+            }
+            self._outbound_actions[command_key] = deepcopy(action)
+            self._append_activity(
+                conversation,
+                event_type="outbound_sent",
+                actor={"type": "user", "id": actor_id},
+                payload={
+                    "draft_id": draft_id,
+                    "draft_version": draft["version"],
+                    "action_id": action["action_id"],
+                    "connector": "fixture_only",
+                },
+            )
+            conversation["version"] = int(conversation["version"]) + 1
+            return deepcopy(action)
+
+    @property
+    def outbound_actions(self) -> list[dict[str, object]]:
+        with self._lock:
+            return deepcopy(list(self._outbound_actions.values()))
+
+    def get_draft(
+        self,
+        draft_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            _, draft = self._require_draft(draft_id, workspace_id)
+            return deepcopy(draft)
 
     def assign_conversation(
         self,
@@ -443,6 +646,10 @@ class InMemoryInbox:
             "messages": [message],
             "comments": [],
             "assignment_history": [],
+            "extracted_entities": None,
+            "context": None,
+            "summary": None,
+            "draft": None,
             "activity": [activity],
         }
 
@@ -513,6 +720,198 @@ class InMemoryInbox:
         if workspace_id is not None and conversation["workspace_id"] != workspace_id:
             raise ConversationNotFoundError(conversation_id)
         return conversation
+
+    def _require_draft(
+        self,
+        draft_id: str,
+        workspace_id: str | None = None,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        for conversation in self._conversations.values():
+            draft = conversation.get("draft")
+            if isinstance(draft, dict) and draft.get("id") == draft_id:
+                if (
+                    workspace_id is not None
+                    and conversation["workspace_id"] != workspace_id
+                ):
+                    break
+                return conversation, draft
+        raise ResourceNotFoundError(draft_id)
+
+    @classmethod
+    def _ensure_extracted_entities(cls, conversation: dict[str, object]) -> None:
+        if conversation.get("extracted_entities") is not None:
+            return
+        entities = cls._extract_entities(conversation)
+        conversation["extracted_entities"] = entities
+        cls._append_activity(
+            conversation,
+            event_type="entities_extracted",
+            actor={"type": "ai", "id": "fixture-extractor"},
+            payload=entities,
+        )
+        conversation["version"] = int(conversation["version"]) + 1
+
+    @classmethod
+    def _ensure_context(cls, conversation: dict[str, object]) -> None:
+        if conversation.get("context") is not None:
+            return
+        conversation["context"] = cls._retrieve_context(conversation)
+
+    @classmethod
+    def _ensure_summary(cls, conversation: dict[str, object]) -> None:
+        if conversation.get("summary") is not None:
+            return
+        summary = cls._summarize(conversation)
+        conversation["summary"] = summary
+        cls._append_activity(
+            conversation,
+            event_type="summary_created",
+            actor={"type": "ai", "id": "fixture-summarizer"},
+            payload=summary,
+        )
+        conversation["version"] = int(conversation["version"]) + 1
+
+    @classmethod
+    def _ensure_draft(cls, conversation: dict[str, object]) -> None:
+        if conversation.get("draft") is not None:
+            return
+        draft = cls._build_draft(conversation)
+        conversation["draft"] = draft
+        cls._append_activity(
+            conversation,
+            event_type="draft_created",
+            actor={"type": "ai", "id": "fixture-drafter"},
+            payload={
+                "draft_id": draft["id"],
+                "draft_version": draft["version"],
+                "evidence_count": len(draft["evidence"]),
+                "missing_evidence": draft["missing_evidence"],
+            },
+        )
+        conversation["version"] = int(conversation["version"]) + 1
+        draft["conversation_version"] = conversation["version"]
+
+    @staticmethod
+    def _extract_entities(conversation: dict[str, object]) -> dict[str, object]:
+        message = conversation["messages"][-1]
+        body = str(message["body_text"])
+        shipment_id = "FT-204" if "FT-204" in body else None
+        tracking_number = "TRK-204" if shipment_id == "FT-204" else None
+        entities = ExtractedEntities(
+            customer_name=message["sender"]["name"],
+            customer_external_id=message["sender"]["external_id"],
+            account_id=None,
+            order_id=None,
+            shipment_id=shipment_id,
+            tracking_number=tracking_number,
+            requested_action="Confirm the new delivery date"
+            if "delivery date" in body.lower()
+            else None,
+            promised_date=None,
+            confidence=0.96 if shipment_id is not None else 0.35,
+            evidence_message_ids=[str(message["id"])],
+            unresolved_fields=["account_id", "promised_date"]
+            if shipment_id is not None
+            else ["account_id", "shipment_id", "tracking_number"],
+        )
+        return asdict(entities)
+
+    @staticmethod
+    def _retrieve_context(conversation: dict[str, object]) -> dict[str, object]:
+        entities = conversation["extracted_entities"]
+        if not isinstance(entities, dict) or entities.get("tracking_number") != "TRK-204":
+            return {
+                "state": "missing",
+                "items": [],
+                "missing": ["tracking_record", "customer_account_record"],
+            }
+        return {
+            "state": "available",
+            "items": [
+                {
+                    "source_type": "tracking_result",
+                    "source_id": "tracking-TRK-204",
+                    "label": "TRK-204 carrier timeline",
+                    "captured_at": "2026-08-04T12:05:00+00:00",
+                    "data": {
+                        "tracking_number": "TRK-204",
+                        "status": "delayed",
+                        "last_scan": "Memphis, TN",
+                        "estimated_delivery": None,
+                    },
+                }
+            ],
+            "missing": ["customer_account_record", "confirmed_delivery_date"],
+        }
+
+    @staticmethod
+    def _summarize(conversation: dict[str, object]) -> dict[str, object]:
+        return {
+            "issue": "Shipment FT-204 is delayed.",
+            "ask": "Confirm the new delivery date.",
+            "known_facts": [
+                "Shipment FT-204 has not arrived.",
+                "Tracking TRK-204 is marked delayed after a last scan in Memphis, TN.",
+            ],
+            "missing_facts": [
+                "A customer account record is not linked.",
+                "A confirmed delivery date is not available.",
+            ],
+            "next_action": (
+                "Check the carrier for a confirmed delivery date before promising one."
+            ),
+            "evidence_message_ids": [conversation["messages"][-1]["id"]],
+        }
+
+    @staticmethod
+    def _build_draft(conversation: dict[str, object]) -> dict[str, object]:
+        message = conversation["messages"][-1]
+        return {
+            "id": f"draft-{conversation['id']}",
+            "conversation_id": conversation["id"],
+            "conversation_version": conversation["version"],
+            "version": 1,
+            "channel": "email",
+            "recipient": message["sender"]["address"],
+            "subject": f"Re: {message['subject']}",
+            "body": (
+                "Hi Jordan,\n\n"
+                "I’m sorry that shipment FT-204 has been delayed. We’re checking "
+                "with the carrier for a confirmed delivery date and will follow up "
+                "as soon as we have one.\n\n"
+                "Best,\nFreight Operations"
+            ),
+            "evidence": [
+                {
+                    "source_type": "message",
+                    "source_id": message["id"],
+                    "label": "Jordan Lee's shipment delay email",
+                    "captured_at": message["received_at"],
+                },
+                {
+                    "source_type": "tracking_result",
+                    "source_id": "tracking-TRK-204",
+                    "label": "TRK-204 carrier timeline",
+                    "captured_at": "2026-08-04T12:05:00+00:00",
+                },
+            ],
+            "missing_evidence": [
+                "confirmed_delivery_date",
+                "customer_account_record",
+            ],
+            "confidence": 0.91,
+            "state": "approval_required",
+            "approval": None,
+            "invalidated_reason": None,
+            "generated_at": "2026-08-09T00:00:00+00:00",
+            "updated_at": "2026-08-09T00:00:00+00:00",
+        }
+
+    @staticmethod
+    def _validate_draft_evidence(draft: dict[str, object]) -> None:
+        body = str(draft["body"]).lower()
+        if "confirmed delivery date is" in body:
+            raise EvidenceRequiredError(["confirmed_delivery_date"])
 
     @classmethod
     def _apply_fixture_intelligence(cls, conversation: dict[str, object]) -> None:
@@ -589,7 +988,7 @@ class InMemoryInbox:
 
     @staticmethod
     def _suggest_route(request_type: str) -> dict[str, object]:
-        for rule in _ASSIGNMENT_RULES:
+        for rule in sorted(_ASSIGNMENT_RULES, key=lambda item: item["priority"]):
             if not rule["enabled"]:
                 continue
             conditions = rule["conditions"]
