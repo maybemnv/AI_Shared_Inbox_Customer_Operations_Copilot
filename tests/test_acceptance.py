@@ -2,9 +2,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.fixture import build_freight_delay_event, create_demo_inbox
 from app.ingestion import VersionConflictError
+from app.main import create_app
 
 
 def test_low_confidence_trace_stays_unassigned_and_does_not_invent_entities():
@@ -86,3 +88,26 @@ def test_stale_draft_edit_is_rejected_without_changing_current_body():
     assert edited["version"] == draft["version"] + 1
     assert current["body"] != original_body
     assert current["body"] == "Current operator response."
+
+
+def test_workspace_scope_hides_conversations_and_drafts_from_other_workspaces():
+    client = TestClient(create_app(create_demo_inbox()))
+    generated = client.post(
+        "/api/v1/conversations/conversation-ft-204/ai/run",
+        json={"action": "draft"},
+    )
+    draft_id = generated.json()["draft"]["id"]
+
+    conversation = client.get(
+        "/api/v1/conversations/conversation-ft-204",
+        params={"workspace_id": "other-workspace"},
+    )
+    draft = client.get(
+        f"/api/v1/drafts/{draft_id}",
+        params={"workspace_id": "other-workspace"},
+    )
+
+    assert conversation.status_code == 404
+    assert conversation.json()["message"] == "conversation_not_found"
+    assert draft.status_code == 404
+    assert draft.json()["message"] == "draft_not_found"
