@@ -19,7 +19,7 @@
 - [x] Added ordered fixture routing with queue, owner, fallback, assignment reason, assignment history, and `classified`/`assigned` activity events.
 - [x] Added workspace-scoped claim and assignment commands with expected-version conflict responses that preserve newer state.
 - [x] Added internal comments with client-request replay safety and append-only `comment_added` activity output.
-- [x] Added focused Phase 2/fixture-drafting regression tests; the current local suite verifies 22 passing tests.
+- [x] Added focused Phase 2/fixture-drafting and client acceptance regression tests; the current local suite verifies 30 passing tests.
 - [x] Added fixture-only nullable entity extraction, bounded tracking context, summary, evidence references, and missing-evidence state.
 - [x] Added fixture-only draft edit, exact-version approval, approval invalidation after edits/new inbound, and idempotent send-boundary tests.
 - [x] Added separate draft API commands for edit, approve, and send; send returns `fixture_only` and makes no live provider claim.
