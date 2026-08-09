@@ -19,7 +19,7 @@
 - [x] Added ordered fixture routing with queue, owner, fallback, assignment reason, assignment history, and `classified`/`assigned` activity events.
 - [x] Added workspace-scoped claim and assignment commands with expected-version conflict responses that preserve newer state.
 - [x] Added internal comments with client-request replay safety and append-only `comment_added` activity output.
-- [x] Added focused Phase 2/fixture-drafting and client acceptance regression tests; the current local suite verifies 30 passing tests.
+- [x] Added focused Phase 2/fixture-drafting and client acceptance regression tests; the current local suite verifies 31 passing tests.
 - [x] Added fixture-only nullable entity extraction, bounded tracking context, summary, evidence references, and missing-evidence state.
 - [x] Added fixture-only draft edit, exact-version approval, approval invalidation after edits/new inbound, and idempotent send-boundary tests.
 - [x] Added separate draft API commands for edit, approve, and send; send returns `fixture_only` and makes no live provider claim.
@@ -39,7 +39,7 @@
 
 1. Add acceptance traces, Supabase migrations/RLS, and workspace/concurrency/security contracts.
 2. Add route-specific secondary views, realtime updates, reconnect replay, and complete UI state coverage.
-3. Add demo script, runbook, and the still-missing Supabase schema/RLS implementation without adding client secrets.
+3. Rehearse the demo script/runbook and validate the prepared Supabase schema/RLS in a client-owned staging project without adding client secrets here.
 4. Validate one provider only if credentials and behavior are proven; preserve the fixture fallback.
 
 The full checklist below remains the source of the complete Phase 0-6 scope; this status records only verified work in the current checkout.
@@ -139,8 +139,8 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 - [ ] Instrument M-01–M-10 from persisted events; keep M-10 qualitative and show denominators for numeric metrics.
 - [ ] Add correlation IDs, audit completeness checks, retry/quarantine inspection, and degraded AI/realtime behavior.
 - [x] Add `README.md` with startup, fixture seed/reset, demo mode, tests, environment variables, and known limitations.
-- [ ] Add `DEMO_SCRIPT.md` with preflight, exact click path, expected states, live-vs-fixture callouts, and fallback steps.
-- [ ] Add `RUNBOOK.md` with connector setup, secrets handling, redacted logs, sync/retry operations, escalation, retention assumptions, and incident recovery.
+- [x] Add `DEMO_SCRIPT.md` with preflight, exact click path, expected states, live-vs-fixture callouts, and fallback steps.
+- [x] Add `RUNBOOK.md` with connector setup, secrets handling, redacted logs, sync/retry operations, escalation, retention assumptions, and incident recovery.
 - [x] Add `deployment.md` with Supabase target infrastructure, fixture launch, environment variables, health checks, rollback boundary, and client handoff guidance.
 - [ ] Produce a connector capability matrix and acceptance report mapping every PRD Must requirement to pass, explicit deferral, or blocker.
 - [ ] Rehearse the demo from a clean environment and record any manual step that prevents a repeatable client walkthrough.

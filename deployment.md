@@ -14,6 +14,26 @@ The current prototype uses an in-memory fixture store and must remain in fixture
 mode until the schema, RLS, authorization, and reset behavior are implemented
 and verified.
 
+## Repository deployment artifacts
+
+- `.env.example` — non-secret local variable template.
+- `db/migrations/001_initial.sql` — prepared Supabase/Postgres schema and RLS boundary; not applied by this checkout.
+- `db/seed_freight_demo.sql` — durable-schema companion seed for `demo-workspace`; not run against a client project.
+- `DEMO_SCRIPT.md` — exact client walkthrough and fixture reset path.
+- `RUNBOOK.md` — sync, draft safety, SLA, Supabase handoff, and incident boundaries.
+
+The migration and seed files are implementation artifacts, not evidence that a
+Supabase project exists or that the live repository has been validated.
+
+## Deployment topology boundary
+
+The reversible target is a Supabase project for Postgres/Auth/Realtime, a
+server-side FastAPI deployment for commands and provider credentials, and a
+Next.js deployment for the operator UI. The specific FastAPI/Next.js hosting
+platform, queue, worker runtime, domain, and TLS termination are not selected
+in this prototype. Keep the fixture deployment as the fallback until each
+boundary has an owner, secret, health check, rollback path, and acceptance run.
+
 ## Local fixture setup
 
 ```powershell
@@ -29,12 +49,17 @@ In a second terminal:
 ```powershell
 Set-Location apps/web
 npm install
+npm run build
 npm run dev
 ```
 
 Open `http://localhost:3000/inbox`. The API is available at
 `http://127.0.0.1:8000`; `/healthz` and `/readyz` must report fixture mode.
 Restarting the API resets the in-memory fixture state.
+
+For a non-default API origin, create `apps/web/.env.local` with
+`NEXT_PUBLIC_API_BASE_URL=https://<api-host>`. The browser must never receive
+`SUPABASE_SERVICE_ROLE_KEY` or a provider secret.
 
 ## Supabase setup boundary
 
@@ -44,8 +69,12 @@ Restarting the API resets the in-memory fixture state.
    draft/approval, SLA, and sync state before selecting the Supabase backend.
 3. Enable RLS and verify every read/write is scoped to the authenticated
    workspace. Keep service-role operations server-side only.
-4. Configure secrets through the deployment platform, run migration and seed
+4. Apply `db/migrations/001_initial.sql`, review the generated policies, and
+   run `db/seed_freight_demo.sql` only in a disposable/staging workspace.
+5. Configure secrets through the deployment platform, run migration and seed
    checks in staging, and rehearse reset/recovery before any client traffic.
+6. Implement the transaction-backed repository and run the contract suite
+   against Supabase before changing `DEMO_MODE` from `fixture`.
 
 ## Environment and secrets
 
@@ -54,10 +83,14 @@ migrations, RLS policies, and authentication tests are complete.
 
 | Variable | Purpose | Current status |
 |---|---|---|
+| `DEMO_MODE` | Select fixture or future durable mode | `fixture` only; no switch is wired |
+| `API_HOST` / `API_PORT` | FastAPI bind address | Local defaults `127.0.0.1` / `8000` |
+| `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API | Local origins are hard-coded today; production config remains open |
 | `NEXT_PUBLIC_API_BASE_URL` | Browser API origin | Optional; local API default is used |
 | `SUPABASE_URL` | Supabase project URL | Future; client supplies later |
 | `SUPABASE_ANON_KEY` | Browser-safe Auth client key | Future; not used by current UI |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side migration/background access | Future secret; never commit or expose |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Future browser Auth client | Future; not used by current UI |
 | `DATABASE_URL` | Supabase Postgres/pooling connection | Future; no durable DB is configured |
 | `REDIS_URL` | Queue, locks, realtime/retry workers | Future; no queue is configured |
 | `CONNECTOR_*` | Future email/provider credentials | Not configured; fixture connector only |
@@ -68,14 +101,17 @@ Git history. The client adds secret values through the hosting secret store.
 ## Demo preflight
 
 1. Start from a clean `master` checkout and run `python -m pytest -q`.
-2. Confirm `/healthz` is `ok` and `/readyz` explicitly reports fixture-only
+2. Run `python -m ruff check --no-cache app tests` and
+   `npm audit --audit-level=high` from `apps/web`.
+3. Run `npm run build` from `apps/web`.
+4. Confirm `/healthz` is `ok` and `/readyz` explicitly reports fixture-only
    dependencies.
-3. Open `/inbox`, show the seeded freight-delay conversation, classification,
+5. Open `/inbox`, show the seeded freight-delay conversation, classification,
    evidence, owner/queue, SLA, draft, approval, and activity states.
-4. Demonstrate edit → exact-version approval → separate fixture-only send.
-5. Replay the inbound fixture, attempt a stale write, and show collision-safe
+6. Demonstrate edit → exact-version approval → separate fixture-only send.
+7. Replay the inbound fixture, attempt a stale write, and show collision-safe
    or `version_conflict` recovery.
-6. Exercise sync retry/quarantine and SLA warning/breach/escalation paths.
+8. Exercise sync retry/quarantine and SLA warning/breach/escalation paths.
 
 ## Current limitations before go-live
 
@@ -83,6 +119,8 @@ Git history. The client adds secret values through the hosting secret store.
   authentication, authorization, queue, or realtime transport.
 - The connector, classification, extraction, retrieval, outbound send, SLA
   escalation, and retry paths are deterministic fixtures.
+- `db/migrations/001_initial.sql` and `db/seed_freight_demo.sql` are prepared
+  but have not been run against a Supabase project from this checkout.
 - Secondary route pages reuse the workbench shell; route-specific analytics,
   rules, customer, and integration views still need implementation.
 - TLS, secret rotation, retention/deletion, observability, backups, incident

@@ -210,6 +210,21 @@ as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'workspace_id', '');
 $$;
 
+create or replace function public.is_workspace_member(target_workspace_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.workspace_members
+    where workspace_id = target_workspace_id
+      and user_id = auth.uid()
+  );
+$$;
+
 alter table public.workspaces enable row level security;
 alter table public.workspace_members enable row level security;
 alter table public.connectors enable row level security;
@@ -233,6 +248,11 @@ declare table_name text;
 begin
   foreach table_name in array array['connectors','customers','conversations','inbound_events','messages','activity_events','extracted_entity_sets','drafts','approvals','outbound_actions','sync_jobs','sla_instances','assignment_rules'] loop
     execute format('drop policy if exists workspace_isolation on public.%I', table_name);
-    execute format('create policy workspace_isolation on public.%I using (workspace_id = public.current_workspace_id()) with check (workspace_id = public.current_workspace_id())', table_name);
+    execute format('create policy workspace_isolation on public.%I using (workspace_id = public.current_workspace_id() and public.is_workspace_member(workspace_id)) with check (workspace_id = public.current_workspace_id() and public.is_workspace_member(workspace_id))', table_name);
   end loop;
 end $$;
+
+drop policy if exists workspace_member_isolation on public.workspace_members;
+create policy workspace_member_isolation on public.workspace_members
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_member(workspace_id))
+  with check (workspace_id = public.current_workspace_id());
