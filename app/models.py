@@ -3,6 +3,23 @@ from typing import Literal
 
 
 Connector = Literal["gmail", "microsoft_graph", "front", "whatsapp"]
+RequestType = Literal["shipment_delay", "unknown"]
+Priority = Literal["low", "normal", "high", "urgent", "unknown"]
+
+
+@dataclass(frozen=True)
+class Classification:
+    """Typed deterministic classification exposed by the fixture path."""
+
+    request_type: RequestType
+    priority: Priority
+    confidence: float
+    rationale: str
+    evidence_message_ids: list[str]
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("classification confidence must be between 0 and 1")
 
 
 @dataclass(frozen=True)
