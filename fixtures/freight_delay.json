@@ -1,0 +1,27 @@
+{
+  "event_id": "event-ft-204",
+  "connector": "gmail",
+  "workspace_id": "demo-workspace",
+  "provider_account_id": "fixture-gmail-account",
+  "provider_thread_id": "thread-ft-204",
+  "provider_message_id": "message-ft-204",
+  "occurred_at": "2026-08-04T12:00:00+00:00",
+  "received_at": "2026-08-04T12:00:05+00:00",
+  "direction": "inbound",
+  "sender": {
+    "external_id": null,
+    "name": "Jordan Lee",
+    "address": "jordan@example.test"
+  },
+  "recipients": [
+    {
+      "name": "Freight Operations",
+      "address": "ops@example.test"
+    }
+  ],
+  "subject": "Shipment FT-204 is delayed",
+  "body_text": "Our freight shipment FT-204 has not arrived. Please confirm the new delivery date.",
+  "body_html": null,
+  "attachments": [],
+  "raw_reference": "fixture://freight-delay/FT-204"
+}
