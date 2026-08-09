@@ -10,6 +10,11 @@
   --status-green: #2e6b4b;
   --status-amber: #8b5a17;
   --status-red: #8e3b35;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
   --rule: rgba(62, 66, 70, 0.18);
   --shadow-soft: 0 14px 40px rgba(18, 19, 20, 0.08);
 }

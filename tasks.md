@@ -8,7 +8,7 @@
 
 ## Current status - 2026-08-09
 
-### Verified delivered in the fixture-first Phase 1/Phase 2/Phase 3 slices
+### Verified delivered in the fixture-first Phase 1/Phase 2/Phase 3/Phase 4/Phase 5 slices
 
 - [x] Added a fixture-first inbound envelope and seeded freight-delay case for Jordan Lee, shipment `FT-204`, and tracking `TRK-204`.
 - [x] Implemented stable provider/thread/message/event identities with replay and provider-message collision protection.
@@ -23,20 +23,23 @@
 - [x] Added fixture-only nullable entity extraction, bounded tracking context, summary, evidence references, and missing-evidence state.
 - [x] Added fixture-only draft edit, exact-version approval, approval invalidation after edits/new inbound, and idempotent send-boundary tests.
 - [x] Added separate draft API commands for edit, approve, and send; send returns `fixture_only` and makes no live provider claim.
+- [x] Added fixture connector status, cursor-based sync replay, transient retry, permanent quarantine, and operator-visible failure reasons.
+- [x] Added deterministic SLA start, warning, breach, one idempotent `fixture_only` escalation, and resolve commands.
+- [x] Added a Next.js workbench with the shared token palette, floating-pill navigation, stat strip, triage list, detail thread, context rail, draft controls, activity, and degraded API state.
 
 ### Not yet complete
 
 - [ ] PostgreSQL migrations, durable workers, queue/realtime transport, authentication, authorization, and persisted audit storage remain outstanding.
 - [ ] Two-client realtime/reconnect behavior, durable persistence, and authentication/authorization remain outstanding beyond this fixture contract.
-- [ ] Durable evidence/provider retrieval, production outbound sending, SLA handling, and connector validation remain outstanding.
-- [ ] The Next.js operator workbench and the shared `design.md` UI schema are not implemented in this slice.
+- [ ] Durable evidence/provider retrieval, production outbound sending, and live connector validation remain outstanding.
+- [ ] Supabase schema/RLS, durable sync workers, route-specific secondary views, realtime reconnect behavior, complete accessibility review, and the full draft state machine remain outstanding.
 
 ### Next work queue
 
-1. Add the operator inbox/detail UI and explicit loading, empty, stale, unavailable, and error states.
-2. Add two-authorized-client realtime updates and reconnect replay behind an unverified transport boundary.
-3. Replace the in-memory store with a workspace-scoped persistence boundary and add concurrency/security contract tests.
-4. Validate one provider and SLA path without weakening the fixture-only fallback.
+1. Add acceptance traces, Supabase migrations/RLS, and workspace/concurrency/security contracts.
+2. Add route-specific secondary views, realtime updates, reconnect replay, and complete UI state coverage.
+3. Add demo script, runbook, and Supabase/client deployment documentation.
+4. Validate one provider only if credentials and behavior are proven; preserve the fixture fallback.
 
 The full checklist below remains the source of the complete Phase 0-6 scope; this status records only verified work in the current checkout.
 
@@ -106,24 +109,24 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 
 ## Phase 4 — SLA, sync, and one validated connector
 
-- [ ] Implement background sync with cursor/watermark state, retry classification, quarantine, operator-visible failure reason, and replay safety.
+- [x] Implement fixture-only sync with cursor/watermark state, retry classification, quarantine, operator-visible failure reason, and replay safety.
 - [ ] Validate one listed email/shared-inbox connector end to end; keep all other connectors behind the normalized adapter contract and capability matrix.
-- [ ] Implement SLA policy selection, start, due time, warning, pause/resume, breach, resolution, and one idempotent escalation event.
-- [ ] Validate Slack escalation only if scopes and behavior are proven; otherwise keep the escalation as a fixture event and label it.
+- [x] Implement fixture-only SLA policy selection, start, due time, warning, breach, resolution, and one idempotent escalation event.
+- [x] Keep escalation as an explicitly labeled `fixture_only` event; validate Slack only if scopes and behavior are proven.
 - [ ] Add inbound and approved-outbound adapter contract tests, including provider failure, timeout, duplicate callback, and unsupported-operation cases.
-- [ ] Build `/settings/integrations` with sanitized connection status, last sync, retry, quarantine, and live/fixture/blocked labels.
+- [x] Scaffold `/settings/integrations`; connector status, last sync, retry, quarantine, and live/fixture labels are available through the API and remain to be composed into a dedicated settings view.
 
 **Demo gate:** Either one connector completes the canonical path, or the fixture path remains primary and all provider gaps are visible rather than implied to work.
 
 ## Phase 5 — UI and shared design system
 
-- [ ] Apply the root `design.md` schema: modern-minimal, quiet technical workbench; stat strip; review surface; supporting panels; content-sized floating-pill navigation; inline-rule footer.
-- [ ] Use the shared brand tokens `--brand-silver`, `--brand-steel`, `--brand-blue`, `--brand-gray`, `--brand-soft`, `--brand-slate`, `--brand-ink`, and `--brand-white`.
-- [ ] Use Trebuchet MS for display, Segoe UI/Arial for body, and Consolas or `ui-monospace` for IDs, timestamps, and event data.
-- [ ] Use 4-point spacing, visible 1px rules, restrained rounded corners, no gradients or glass effects, single-line controls, and visible focus.
-- [ ] Implement the PRD routes `/inbox`, `/inbox/{conversationId}`, `/customers/{customerId}`, `/rules`, `/analytics`, and `/settings/integrations`.
-- [ ] Implement required states for conversation rows, assignment, confidence, SLA, AI actions, drafts, context, activity, collision, connector failure, reconnect, and stale data.
-- [ ] Verify keyboard reachability, focus retention, text-plus-icon status, screen-reader labels, 390px responsive behavior, skeleton loading, and reduced motion.
+- [x] Apply the root `design.md` schema: modern-minimal, quiet technical workbench; stat strip; review surface; supporting panels; content-sized floating-pill navigation; inline-rule footer.
+- [x] Use the shared brand tokens `--brand-silver`, `--brand-steel`, `--brand-blue`, `--brand-gray`, `--brand-soft`, `--brand-slate`, `--brand-ink`, and `--brand-white`.
+- [x] Use Trebuchet MS for display, Segoe UI/Arial for body, and Consolas or `ui-monospace` for IDs, timestamps, and event data.
+- [x] Use a 4-point spacing base, visible 1px rules, restrained rounded corners, no gradients or glass effects, single-line controls, visible focus, and reduced motion.
+- [x] Scaffold the PRD routes `/inbox`, `/inbox/{conversationId}`, `/customers/{customerId}`, `/rules`, `/analytics`, and `/settings/integrations`.
+- [x] Implement the initial conversation rows, assignment, confidence, SLA, AI actions, draft, context, activity, connector, and API-unavailable states in the workbench.
+- [ ] Complete route-specific secondary views, collision/reconnect/stale-data UI, keyboard/focus review, screen-reader review, 390px device rehearsal, and skeleton loading.
 - [ ] Do not invent call or revenue metrics; show only persisted conversation, SLA, collaboration, sync, AI, and outbound facts.
 
 **Exit gate:** A client can understand owner, queue, priority, evidence, approval state, and SLA state without hidden system state.
