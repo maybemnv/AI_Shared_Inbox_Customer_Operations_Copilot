@@ -8,26 +8,35 @@
 
 ## Current status - 2026-08-09
 
-### Verified delivered in the first vertical slice
+### Verified delivered in the fixture-first Phase 1/Phase 2/Phase 3 slices
 
 - [x] Added a fixture-first inbound envelope and seeded freight-delay case for Jordan Lee, shipment `FT-204`, and tracking `TRK-204`.
 - [x] Implemented stable provider/thread/message/event identities with replay and provider-message collision protection.
 - [x] Added a workspace-scoped FastAPI inbox read surface with conversation detail, source metadata, activity history, health, readiness, and safe not-found responses.
 - [x] Added regression coverage for identity normalization, replay safety, collision safety, workspace scope, readiness, and read-model API behavior.
 - [x] Documented the fixture-only boundary, local setup, and unverified production integrations.
+- [x] Added typed deterministic freight-delay classification with intent, priority, bounded confidence, rationale, and evidence message IDs.
+- [x] Added ordered fixture routing with queue, owner, fallback, assignment reason, assignment history, and `classified`/`assigned` activity events.
+- [x] Added workspace-scoped claim and assignment commands with expected-version conflict responses that preserve newer state.
+- [x] Added internal comments with client-request replay safety and append-only `comment_added` activity output.
+- [x] Added focused Phase 2/fixture-drafting regression tests; the current local suite verifies 22 passing tests.
+- [x] Added fixture-only nullable entity extraction, bounded tracking context, summary, evidence references, and missing-evidence state.
+- [x] Added fixture-only draft edit, exact-version approval, approval invalidation after edits/new inbound, and idempotent send-boundary tests.
+- [x] Added separate draft API commands for edit, approve, and send; send returns `fixture_only` and makes no live provider claim.
 
 ### Not yet complete
 
 - [ ] PostgreSQL migrations, durable workers, queue/realtime transport, authentication, authorization, and persisted audit storage remain outstanding.
-- [ ] Classification, routing, ownership, collision-safe edits, evidence retrieval, drafting, approval, sending, SLA handling, and connector validation remain outstanding.
+- [ ] Two-client realtime/reconnect behavior, durable persistence, and authentication/authorization remain outstanding beyond this fixture contract.
+- [ ] Durable evidence/provider retrieval, production outbound sending, SLA handling, and connector validation remain outstanding.
 - [ ] The Next.js operator workbench and the shared `design.md` UI schema are not implemented in this slice.
 
 ### Next work queue
 
 1. Add the operator inbox/detail UI and explicit loading, empty, stale, unavailable, and error states.
-2. Add typed classification, assignment, ownership, expected-version writes, and persisted activity commands.
-3. Add evidence-backed drafting with exact-version approval and a separate outbound send boundary.
-4. Replace the in-memory store with a workspace-scoped persistence boundary and add concurrency/security contract tests.
+2. Add two-authorized-client realtime updates and reconnect replay behind an unverified transport boundary.
+3. Replace the in-memory store with a workspace-scoped persistence boundary and add concurrency/security contract tests.
+4. Validate one provider and SLA path without weakening the fixture-only fallback.
 
 The full checklist below remains the source of the complete Phase 0-6 scope; this status records only verified work in the current checkout.
 
@@ -73,10 +82,10 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 
 ## Phase 2 — Triage, routing, ownership, and collaboration
 
-- [ ] Implement typed request classification, priority, confidence, rationale, and evidence message IDs.
-- [ ] Implement ordered assignment rules, queue fallback, owner assignment, reassignment history, and a visible reason for unassigned work.
-- [ ] Implement claim state, active viewer/editor state, expected-version writes, and `version_conflict` responses that never overwrite newer state.
-- [ ] Implement internal comments and persisted human, AI, integration, system, and failure activity events.
+- [x] Implement typed deterministic fixture request classification, priority, confidence, rationale, and evidence message IDs.
+- [x] Implement ordered fixture assignment rules, queue fallback, owner assignment, assignment history, and an explicit assignment reason.
+- [x] Implement fixture claim state, active viewer/editor state, expected-version writes, and `version_conflict` responses that never overwrite newer state.
+- [x] Implement internal comments and append-only fixture activity events; durable persistence remains outstanding.
 - [ ] Stream assignment, claim, comment, and activity updates to two authorized open clients; replay persisted events after reconnect.
 - [ ] Add classification, routing, duplicate-event, stale-write, and two-client concurrency tests.
 
@@ -84,14 +93,14 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 
 ## Phase 3 — Context, intelligence, and safe drafting
 
-- [ ] Implement nullable extraction for customer, account, order, shipment, tracking, promised date, and requested action; null means unknown and never an invented fact.
-- [ ] Implement bounded account, CRM, order, shipment, and tracking retrieval with source timestamps and evidence references.
-- [ ] Implement summaries containing issue, customer ask, known facts, missing facts, and next action.
+- [x] Implement fixture-only nullable extraction for customer, account, order, shipment, tracking, promised date, and requested action; null means unknown and never an invented fact.
+- [x] Implement fixture-only bounded tracking retrieval with a source timestamp and evidence reference; account, CRM, and order adapters remain outstanding.
+- [x] Implement fixture-only summaries containing issue, customer ask, known facts, missing facts, and next action.
 - [ ] Build the context rail for customer, account, shipment/order, CRM records, source references, and confidence rationale.
-- [ ] Implement draft states: `generating`, `ready`, `edited`, `approval_required`, `approved`, and `send_failed`.
-- [ ] Increment draft versions on every edit; invalidate approval after edits or a new inbound message.
-- [ ] Prevent unsupported claims and expose missing evidence before approval.
-- [ ] Add tests proving no outbound command can be created without approval for the exact current draft version.
+- [ ] Implement the full draft state machine: `generating`, `ready`, `edited`, `approval_required`, `approved`, and `send_failed`; the current fixture path covers `edited`, `approval_required`, and `approved`.
+- [x] Increment fixture draft versions on every edit; invalidate approval after edits or a new inbound message.
+- [x] Prevent the tested unsupported delivery-date claim and expose missing evidence before fixture approval.
+- [x] Add tests proving no fixture outbound command can be created without approval for the exact current draft version.
 
 **Demo gate:** The freight case produces an editable evidence-backed draft, shows missing evidence honestly, and keeps send locked until exact-version approval.
 

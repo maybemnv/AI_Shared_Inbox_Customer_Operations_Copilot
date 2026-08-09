@@ -1,23 +1,24 @@
 # AI Shared Inbox Customer Operations Copilot
 
-This checkout contains the Phase 0/Phase 1 fixture-first vertical slice from
-`PRD.md`. It exposes a small FastAPI read surface for the seeded freight-delay
-conversation and proves normalized provider identity plus duplicate-event
-safety.
+This checkout contains the verified fixture-first Phase 1 read slice, Phase 2
+triage/collaboration slice, and the current Phase 3 context/drafting slice from
+`PRD.md`. It exposes a small FastAPI surface for the seeded freight-delay
+conversation and proves normalized provider identity, deterministic
+classification/routing, claim collision protection, append-only internal
+activity output, evidence-backed drafting, and exact-version approval.
 
 ## Local architecture
 
-- Persistence: `InMemoryInbox` only. PostgreSQL is a reversible Phase 2+ choice,
-  not configured here.
+- Persistence: `InMemoryInbox` only. PostgreSQL, durable audit storage, and
+  migrations are not configured here.
 - Connector: the deterministic fixture is the only active connector. The
   normalized event uses the PRD's `gmail` connector value, but no OAuth or live
   provider behavior is claimed.
-- AI/model: no model is configured. Classification, extraction, retrieval,
-  summarization, and drafting remain future typed jobs; the Phase 1 read model
-  intentionally reports unknown values.
-- Queue/realtime: no queue or realtime product is configured. Ingestion is
-  synchronous and the API returns a current snapshot so a future adapter can
-  be introduced without changing the fixture contract.
+- AI/model: no live model is configured. Classification, extraction, context,
+  summary, and drafting use deterministic fixture rules; no live AI claim is
+  made.
+- Queue/realtime: no queue or realtime product is configured. Ingestion and
+  fixture commands are synchronous and return current snapshots/activity.
 - UI: not started in this slice. The shared root `design.md` will be applied
   when the Next.js surface begins.
 
@@ -31,12 +32,29 @@ python -m uvicorn app.main:app --reload
 
 The API is then available at `http://127.0.0.1:8000`.
 
-## Phase 1 endpoints
+## Fixture endpoints
 
-- `GET /healthz` — process health.
-- `GET /readyz` — explicit fixture-only dependency status.
-- `GET /api/v1/conversations?workspace_id=demo-workspace` — seeded inbox list.
-- `GET /api/v1/conversations/conversation-ft-204` — freight-delay detail.
+- `GET /healthz` - process health.
+- `GET /readyz` - explicit fixture-only dependency status.
+- `GET /api/v1/conversations?workspace_id=demo-workspace` - seeded inbox list.
+- `GET /api/v1/conversations/conversation-ft-204?workspace_id=demo-workspace` - detail.
+- `POST /api/v1/conversations/{id}/ai/run` - deterministic fixture classification/routing.
+- `POST /api/v1/conversations/{id}/assign` - expected-version operator assignment.
+- `POST /api/v1/conversations/{id}/claim` - workspace-scoped expected-version claim.
+- `POST /api/v1/conversations/{id}/comments` - internal comment plus activity output.
+- `GET /api/v1/drafts/{id}` - workspace-scoped current draft.
+- `PATCH /api/v1/drafts/{id}` - edit draft with an expected draft version.
+- `POST /api/v1/drafts/{id}/approve` - approve the exact current draft version.
+- `POST /api/v1/drafts/{id}/send` - fixture-only send after matching approval.
+- `GET /api/v1/events?workspace_id=demo-workspace&conversation_id={id}` - activity replay.
+- `GET /api/v1/rules` - ordered fixture assignment rules.
+
+Command payloads carry `workspace_id`, `actor_id`, and `expected_version` where
+applicable. A stale write returns `409` with `code=version_conflict` and does
+not overwrite the current conversation or draft. A send without the matching
+current approval returns `409` with `code=approval_required`. The fixture path
+is synchronous and in-memory: it does not claim live AI, PostgreSQL, queue,
+realtime, provider, authentication, or durable persistence support.
 
 The fixture is `fixtures/freight_delay.json` and represents the PRD case:
 Jordan Lee, shipment `FT-204`, tracking `TRK-204`.
