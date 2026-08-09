@@ -1,7 +1,7 @@
 import pytest
 
 from app.fixture import create_demo_inbox
-from app.ingestion import VersionConflictError
+from app.ingestion import InMemoryInbox, VersionConflictError
 
 
 def test_freight_case_classifies_and_returns_ordered_route_suggestion():
@@ -30,6 +30,17 @@ def test_freight_case_classifies_and_returns_ordered_route_suggestion():
     assert stored["queue_id"] == "freight-operations"
     assert stored["suggested_queue_id"] == "freight-operations"
     assert stored["suggested_owner_id"] == "operator-freight"
+
+
+def test_unknown_request_type_stays_unassigned_with_fallback_reason():
+    route = InMemoryInbox._suggest_route("unsupported_request")
+
+    assert route == {
+        "queue_id": "queue-unassigned",
+        "owner_id": None,
+        "rule_id": "rule-fallback-unassigned",
+        "reason": "No specific enabled rule matched; kept the request unassigned.",
+    }
 
 
 def test_stale_assignment_cannot_overwrite_newer_owner():

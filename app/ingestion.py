@@ -1229,13 +1229,21 @@ class InMemoryInbox:
             if not rule["enabled"]:
                 continue
             conditions = rule["conditions"]
-            if conditions.get("request_type", request_type) == request_type:
+            if conditions and conditions.get("request_type") != request_type:
+                continue
+            if rule["id"] == "rule-shipment-delay":
                 return {
                     "queue_id": "freight-operations",
                     "owner_id": "operator-freight",
                     "rule_id": "rule-freight-delay",
                     "reason": "Matched the first enabled shipment-delay fixture rule.",
                 }
+            return {
+                "queue_id": "queue-unassigned",
+                "owner_id": None,
+                "rule_id": rule["id"],
+                "reason": "No specific enabled rule matched; kept the request unassigned.",
+            }
         return {
             "queue_id": "queue-unassigned",
             "owner_id": None,

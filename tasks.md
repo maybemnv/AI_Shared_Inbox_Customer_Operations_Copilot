@@ -26,6 +26,7 @@
 - [x] Added fixture connector status, cursor-based sync replay, transient retry, permanent quarantine, and operator-visible failure reasons.
 - [x] Added deterministic SLA start, warning, breach, one idempotent `fixture_only` escalation, and resolve commands.
 - [x] Added a Next.js workbench with the shared token palette, floating-pill navigation, stat strip, triage list, detail thread, context rail, draft controls, activity, and degraded API state.
+- [x] Added `deployment.md` with Supabase target infrastructure, fixture launch steps, environment-variable ownership, demo preflight, and explicit no-secrets limitations.
 
 ### Not yet complete
 
@@ -38,7 +39,7 @@
 
 1. Add acceptance traces, Supabase migrations/RLS, and workspace/concurrency/security contracts.
 2. Add route-specific secondary views, realtime updates, reconnect replay, and complete UI state coverage.
-3. Add demo script, runbook, and Supabase/client deployment documentation.
+3. Add demo script, runbook, and the still-missing Supabase schema/RLS implementation without adding client secrets.
 4. Validate one provider only if credentials and behavior are proven; preserve the fixture fallback.
 
 The full checklist below remains the source of the complete Phase 0-6 scope; this status records only verified work in the current checkout.
@@ -137,9 +138,10 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 - [ ] Execute the freight-delay trace, duplicate-event/collision trace, and low-confidence/missing-account trace from clean fixtures.
 - [ ] Instrument M-01–M-10 from persisted events; keep M-10 qualitative and show denominators for numeric metrics.
 - [ ] Add correlation IDs, audit completeness checks, retry/quarantine inspection, and degraded AI/realtime behavior.
-- [ ] Add `README.md` with startup, fixture seed/reset, demo mode, tests, environment variables, and known limitations.
+- [x] Add `README.md` with startup, fixture seed/reset, demo mode, tests, environment variables, and known limitations.
 - [ ] Add `DEMO_SCRIPT.md` with preflight, exact click path, expected states, live-vs-fixture callouts, and fallback steps.
 - [ ] Add `RUNBOOK.md` with connector setup, secrets handling, redacted logs, sync/retry operations, escalation, retention assumptions, and incident recovery.
+- [x] Add `deployment.md` with Supabase target infrastructure, fixture launch, environment variables, health checks, rollback boundary, and client handoff guidance.
 - [ ] Produce a connector capability matrix and acceptance report mapping every PRD Must requirement to pass, explicit deferral, or blocker.
 - [ ] Rehearse the demo from a clean environment and record any manual step that prevents a repeatable client walkthrough.
 
