@@ -46,6 +46,19 @@ def test_missing_conversation_returns_prd_safe_error_contract():
     assert body["retryable"] is False
 
 
+def test_local_web_origin_is_allowed_for_fixture_workbench():
+    response = client.options(
+        "/api/v1/conversations",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
 def test_claim_command_is_workspace_scoped_and_version_checked(monkeypatch):
     monkeypatch.setattr(main, "demo_inbox", create_demo_inbox())
 

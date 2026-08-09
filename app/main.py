@@ -2,6 +2,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -127,6 +128,16 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
         title="AI Shared Inbox Customer Operations Copilot",
         version="0.2.0-fixture",
         description="Fixture-first local surface; no live provider or queue is configured.",
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @application.exception_handler(HTTPException)
