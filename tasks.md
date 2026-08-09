@@ -6,6 +6,31 @@
 
 **Tech stack:** Next.js, FastAPI, PostgreSQL, message queue, realtime updates, background sync, and typed provider adapters, as specified in `PRD.md`.
 
+## Current status - 2026-08-09
+
+### Verified delivered in the first vertical slice
+
+- [x] Added a fixture-first inbound envelope and seeded freight-delay case for Jordan Lee, shipment `FT-204`, and tracking `TRK-204`.
+- [x] Implemented stable provider/thread/message/event identities with replay and provider-message collision protection.
+- [x] Added a workspace-scoped FastAPI inbox read surface with conversation detail, source metadata, activity history, health, readiness, and safe not-found responses.
+- [x] Added regression coverage for identity normalization, replay safety, collision safety, workspace scope, readiness, and read-model API behavior.
+- [x] Documented the fixture-only boundary, local setup, and unverified production integrations.
+
+### Not yet complete
+
+- [ ] PostgreSQL migrations, durable workers, queue/realtime transport, authentication, authorization, and persisted audit storage remain outstanding.
+- [ ] Classification, routing, ownership, collision-safe edits, evidence retrieval, drafting, approval, sending, SLA handling, and connector validation remain outstanding.
+- [ ] The Next.js operator workbench and the shared `design.md` UI schema are not implemented in this slice.
+
+### Next work queue
+
+1. Add the operator inbox/detail UI and explicit loading, empty, stale, unavailable, and error states.
+2. Add typed classification, assignment, ownership, expected-version writes, and persisted activity commands.
+3. Add evidence-backed drafting with exact-version approval and a separate outbound send boundary.
+4. Replace the in-memory store with a workspace-scoped persistence boundary and add concurrency/security contract tests.
+
+The full checklist below remains the source of the complete Phase 0-6 scope; this status records only verified work in the current checkout.
+
 ## Global constraints
 
 - [ ] Preserve the PRD human-control boundary: classification, extraction, retrieval, summarization, routing, and drafting may run asynchronously; outbound sending requires explicit approval of the exact current draft version followed by a separate send action.
@@ -38,11 +63,11 @@
 
 - [ ] Create workspace, connector, customer, conversation, message, activity-event, and sync-job migrations with workspace scope and uniqueness constraints.
 - [ ] Seed the canonical freight case: Jordan Lee, `Shipment FT-204 is delayed`, shipment `FT-204`, tracking `TRK-204`, and the expected source metadata.
-- [ ] Normalize fixture inbound events with provider, thread, message, and event identities; acknowledge duplicate events without creating duplicate messages or activities.
+- [x] Normalize fixture inbound events with provider, thread, message, and event identities; acknowledge duplicate events without creating duplicate messages or activities.
 - [ ] Implement `GET /inbox` and `GET /inbox/{conversation_id}` with filters for status, queue, owner, priority, SLA state, and channel.
-- [ ] Build the initial inbox row, conversation detail, latest message, source metadata, and append-only activity timeline.
+- [x] Build the initial inbox row, conversation detail, latest message, source metadata, and append-only activity timeline.
 - [ ] Render explicit loading, empty, unavailable, stale, and error states rather than blank surfaces.
-- [ ] Add contract tests for event identity, message identity, workspace scope, replay, and safe error responses.
+- [x] Add contract tests for event identity, message identity, workspace scope, replay, and safe error responses.
 
 **Demo gate:** The seeded freight conversation appears once with stable IDs, source metadata, and a visible activity timeline.
 
@@ -127,4 +152,3 @@
 - [ ] Tests prove workspace scoping, audit coverage, idempotency, collision protection, and SLA correctness.
 - [ ] Every live integration claim is verified or labeled as fixture, blocked, or unknown.
 - [ ] A client can start, reset, rehearse, and understand the prototype from the README and demo script.
-
