@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import asdict
+from datetime import datetime
 from threading import RLock
 
 from app.models import Classification, ExtractedEntities, IngestResult, NormalizedInboundEvent
@@ -51,6 +52,26 @@ _ASSIGNMENT_RULES = [
     },
 ]
 
+_CONNECTOR_DEFINITIONS = [
+    {
+        "id": "fixture-gmail",
+        "connector": "gmail",
+        "mode": "fixture",
+        "live_status": "not_configured",
+        "capabilities": {
+            "inbound": "fixture",
+            "outbound": "fixture_only",
+            "live": "not_configured",
+        },
+    }
+]
+
+_SLA_POLICY = {
+    "id": "fixture-high-priority-response",
+    "warning_at": "2026-08-09T00:45:00+00:00",
+    "due_at": "2026-08-09T01:00:00+00:00",
+}
+
 
 class InMemoryInbox:
     """Small local repository with database-like identity constraints.
@@ -70,6 +91,17 @@ class InMemoryInbox:
         self._outbound_actions: dict[
             tuple[str, str, str], dict[str, object]
         ] = {}
+        self._sync_jobs: dict[str, dict[str, object]] = {}
+        self._sync_commands: dict[tuple[str, str], str] = {}
+        self._connector_state: dict[str, dict[str, object]] = {
+            definition["id"]: {
+                "status": "available",
+                "last_sync_at": None,
+                "cursor": None,
+            }
+            for definition in _CONNECTOR_DEFINITIONS
+        }
+        self._escalation_events: list[dict[str, object]] = []
         self._lock = RLock()
 
     def ingest(self, event: NormalizedInboundEvent) -> IngestResult:
@@ -409,6 +441,209 @@ class InMemoryInbox:
             _, draft = self._require_draft(draft_id, workspace_id)
             return deepcopy(draft)
 
+    def list_connectors(self) -> list[dict[str, object]]:
+        with self._lock:
+            return [
+                {
+                    **deepcopy(definition),
+                    **deepcopy(self._connector_state[definition["id"]]),
+                }
+                for definition in _CONNECTOR_DEFINITIONS
+            ]
+
+    def sync_connector(
+        self,
+        connector_id: str,
+        *,
+        kind: str,
+        idempotency_key: str,
+        failure_mode: str | None = None,
+    ) -> dict[str, object]:
+        command_key = (connector_id, idempotency_key)
+        with self._lock:
+            if command_key in self._sync_commands:
+                return deepcopy(self._sync_jobs[self._sync_commands[command_key]])
+            self._require_connector(connector_id)
+            job = {
+                "job_id": f"sync-{connector_id}-{idempotency_key}",
+                "connector_id": connector_id,
+                "kind": kind,
+                "idempotency_key": idempotency_key,
+                "attempt": 1,
+                "state": "queued",
+                "retryable": False,
+                "failure_reason": None,
+                "cursor": None,
+                "duplicate_count": 0,
+            }
+            if failure_mode == "transient":
+                job.update(
+                    {
+                        "state": "failed",
+                        "retryable": True,
+                        "failure_reason": "fixture_transient_sync_failure",
+                    }
+                )
+                self._connector_state[connector_id]["status"] = "failed"
+            elif failure_mode == "permanent":
+                job.update(
+                    {
+                        "state": "quarantined",
+                        "retryable": False,
+                        "failure_reason": "fixture_permanent_sync_failure",
+                    }
+                )
+                self._connector_state[connector_id]["status"] = "quarantined"
+            else:
+                self._complete_fixture_sync(job)
+            self._sync_jobs[job["job_id"]] = deepcopy(job)
+            self._sync_commands[command_key] = job["job_id"]
+            return deepcopy(job)
+
+    def retry_sync(self, job_id: str) -> dict[str, object]:
+        with self._lock:
+            job = self._sync_jobs.get(job_id)
+            if job is None:
+                raise ResourceNotFoundError(job_id)
+            if job["state"] != "failed" or job["retryable"] is not True:
+                return deepcopy(job)
+            job["attempt"] = int(job["attempt"]) + 1
+            self._complete_fixture_sync(job)
+            self._sync_jobs[job_id] = deepcopy(job)
+            return deepcopy(job)
+
+    def start_sla(
+        self,
+        conversation_id: str,
+        *,
+        expected_version: int,
+        actor_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            conversation = self._require_conversation(conversation_id, workspace_id)
+            self._check_version(conversation, expected_version)
+            if conversation["sla_state"] != "not_started":
+                return deepcopy(conversation)
+            conversation["sla_state"] = "running"
+            conversation["sla"] = {
+                "policy_id": _SLA_POLICY["id"],
+                "started_at": "2026-08-09T00:00:00+00:00",
+                "warning_at": _SLA_POLICY["warning_at"],
+                "due_at": _SLA_POLICY["due_at"],
+                "last_evaluated_at": None,
+            }
+            self._append_activity(
+                conversation,
+                event_type="sla_started",
+                actor={"type": "system", "id": actor_id},
+                payload={
+                    "policy_id": _SLA_POLICY["id"],
+                    "due_at": _SLA_POLICY["due_at"],
+                },
+            )
+            conversation["version"] = int(conversation["version"]) + 1
+            return deepcopy(conversation)
+
+    def evaluate_sla(
+        self,
+        conversation_id: str,
+        *,
+        now: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            conversation = self._require_conversation(conversation_id, workspace_id)
+            sla = conversation.get("sla")
+            if not isinstance(sla, dict) or conversation["sla_state"] == "resolved":
+                return deepcopy(conversation)
+            current = datetime.fromisoformat(now)
+            due = datetime.fromisoformat(str(sla["due_at"]))
+            warning = datetime.fromisoformat(str(sla["warning_at"]))
+            sla["last_evaluated_at"] = now
+            next_state = conversation["sla_state"]
+            if current >= due:
+                next_state = "breached"
+            elif current >= warning and conversation["sla_state"] == "running":
+                next_state = "warning"
+            if next_state == conversation["sla_state"]:
+                return deepcopy(conversation)
+            conversation["sla_state"] = next_state
+            if next_state == "breached" and conversation.get("escalation") is None:
+                escalation = {
+                    "id": f"escalation-{conversation_id}",
+                    "conversation_id": conversation_id,
+                    "connector": "fixture_only",
+                    "channel": "fixture",
+                    "state": "sent",
+                    "idempotency_key": f"sla-{conversation_id}",
+                    "reason": "High-priority response SLA breached.",
+                }
+                conversation["escalation"] = escalation
+                self._escalation_events.append(deepcopy(escalation))
+                self._append_activity(
+                    conversation,
+                    event_type="sla_escalated",
+                    actor={"type": "system", "id": "fixture-sla"},
+                    payload=escalation,
+                )
+            conversation["version"] = int(conversation["version"]) + 1
+            return deepcopy(conversation)
+
+    def resolve_conversation(
+        self,
+        conversation_id: str,
+        *,
+        expected_version: int,
+        actor_id: str,
+        workspace_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            conversation = self._require_conversation(conversation_id, workspace_id)
+            self._check_version(conversation, expected_version)
+            conversation["status"] = "resolved"
+            conversation["sla_state"] = "resolved"
+            conversation["resolved_at"] = "2026-08-09T00:00:00+00:00"
+            self._append_activity(
+                conversation,
+                event_type="resolved",
+                actor={"type": "user", "id": actor_id},
+                payload={"status": "resolved"},
+            )
+            conversation["version"] = int(conversation["version"]) + 1
+            return deepcopy(conversation)
+
+    @property
+    def escalation_events(self) -> list[dict[str, object]]:
+        with self._lock:
+            return deepcopy(self._escalation_events)
+
+    @staticmethod
+    def _require_connector(connector_id: str) -> None:
+        if connector_id not in {definition["id"] for definition in _CONNECTOR_DEFINITIONS}:
+            raise ResourceNotFoundError(connector_id)
+
+    def _complete_fixture_sync(self, job: dict[str, object]) -> None:
+        from app.fixture import build_freight_delay_event
+
+        result = self.ingest(build_freight_delay_event())
+        job.update(
+            {
+                "state": "completed",
+                "retryable": False,
+                "failure_reason": None,
+                "cursor": "fixture:event-ft-204",
+                "duplicate_count": 1 if result.duplicate else 0,
+            }
+        )
+        self._connector_state[job["connector_id"]].update(
+            {
+                "status": "available",
+                "last_sync_at": "2026-08-09T00:00:00+00:00",
+                "cursor": job["cursor"],
+            }
+        )
+
     def assign_conversation(
         self,
         conversation_id: str,
@@ -641,6 +876,8 @@ class InMemoryInbox:
             "active_viewer_id": None,
             "active_editor_id": None,
             "sla_state": "not_started",
+            "sla": None,
+            "escalation": None,
             "version": 1,
             "subject": event.subject,
             "messages": [message],

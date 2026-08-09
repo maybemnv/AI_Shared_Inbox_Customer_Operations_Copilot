@@ -71,6 +71,29 @@ class DraftSendRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
 
 
+class SyncRequest(BaseModel):
+    kind: Literal["inbound"] = "inbound"
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    failure_mode: Literal["transient", "permanent"] | None = None
+
+
+class SlaStartRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    actor_id: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
+class SlaEvaluateRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    now: str = Field(min_length=1)
+
+
+class ResolveRequest(BaseModel):
+    workspace_id: str = "demo-workspace"
+    actor_id: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
 def _error_response(
     *,
     status_code: int,
@@ -336,6 +359,65 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             draft_id,
             approval_id=request.approval_id,
             idempotency_key=request.idempotency_key,
+            actor_id=request.actor_id,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.get("/api/v1/connectors")
+    def list_connectors() -> dict[str, object]:
+        return {"items": get_repository().list_connectors()}
+
+    @application.post("/api/v1/connectors/{connector_id}/sync")
+    def sync_connector(
+        connector_id: str,
+        request: SyncRequest,
+    ) -> dict[str, object]:
+        return get_repository().sync_connector(
+            connector_id,
+            kind=request.kind,
+            idempotency_key=request.idempotency_key,
+            failure_mode=request.failure_mode,
+        )
+
+    @application.post("/api/v1/connectors/{connector_id}/sync/{job_id}/retry")
+    def retry_sync(
+        connector_id: str,
+        job_id: str,
+    ) -> dict[str, object]:
+        del connector_id
+        return get_repository().retry_sync(job_id)
+
+    @application.post("/api/v1/conversations/{conversation_id}/sla/start")
+    def start_sla(
+        conversation_id: str,
+        request: SlaStartRequest,
+    ) -> dict[str, object]:
+        return get_repository().start_sla(
+            conversation_id,
+            expected_version=request.expected_version,
+            actor_id=request.actor_id,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.post("/api/v1/conversations/{conversation_id}/sla/evaluate")
+    def evaluate_sla(
+        conversation_id: str,
+        request: SlaEvaluateRequest,
+    ) -> dict[str, object]:
+        return get_repository().evaluate_sla(
+            conversation_id,
+            now=request.now,
+            workspace_id=request.workspace_id,
+        )
+
+    @application.post("/api/v1/conversations/{conversation_id}/resolve")
+    def resolve_conversation(
+        conversation_id: str,
+        request: ResolveRequest,
+    ) -> dict[str, object]:
+        return get_repository().resolve_conversation(
+            conversation_id,
+            expected_version=request.expected_version,
             actor_id=request.actor_id,
             workspace_id=request.workspace_id,
         )
