@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.fixture import create_demo_inbox
+from app.fixture import build_freight_delay_event, create_demo_inbox
 from app.ingestion import (
     ApprovalRequiredError,
     ConversationNotFoundError,
@@ -118,6 +118,8 @@ def _error_response(
 
 def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
     fixed_repository = inbox
+    demo_workspace = "demo-workspace"
+    seeded_conversation_id = "conversation-ft-204"
 
     def get_repository() -> InMemoryInbox:
         if fixed_repository is not None:
@@ -225,15 +227,39 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
 
     @application.get("/readyz")
     def readiness() -> dict[str, object]:
+        repository = get_repository()
+        seed_present = (
+            repository.get_conversation(
+                seeded_conversation_id,
+                workspace_id=demo_workspace,
+            )
+            is not None
+        )
         return {
-            "status": "ready",
+            "status": "ready" if seed_present else "not_ready",
             "mode": "fixture",
+            "fixture": {
+                "workspace_id": demo_workspace,
+                "seeded_conversation": seeded_conversation_id,
+                "seed_present": seed_present,
+            },
             "dependencies": {
                 "database": "not_configured",
                 "queue": "not_configured",
                 "realtime": "not_configured",
                 "provider": "fixture_only",
             },
+        }
+
+    @application.post("/api/v1/demo/reset")
+    def reset_demo() -> dict[str, str]:
+        repository = get_repository()
+        result = repository.reset(build_freight_delay_event())
+        return {
+            "status": "reset",
+            "mode": "fixture",
+            "workspace_id": demo_workspace,
+            "conversation_id": result.conversation_id,
         }
 
     @application.get("/api/v1/conversations")
