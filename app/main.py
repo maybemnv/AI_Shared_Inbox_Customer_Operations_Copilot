@@ -136,6 +136,8 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
         allow_origins=[
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:3103",
+            "http://127.0.0.1:3103",
         ],
         allow_credentials=False,
         allow_methods=["*"],

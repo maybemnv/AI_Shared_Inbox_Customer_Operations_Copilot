@@ -20,6 +20,7 @@ python -m ruff check --no-cache app tests
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
 Set-Location apps/web
 npm ci
+npx playwright install chromium
 npm run build
 $env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8103"
 npm run dev -- --hostname 127.0.0.1 --port 3103
