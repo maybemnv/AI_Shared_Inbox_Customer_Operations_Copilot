@@ -1,9 +1,17 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
 const rootDir = path.resolve(__dirname, "..", "..");
-const pythonPath = path.join(rootDir, ".venv", "Scripts", "python.exe");
+const pythonCandidates = [
+  process.env.PYTHON,
+  process.env.PYTHON_EXECUTABLE,
+  path.join(rootDir, ".venv", process.platform === "win32" ? "Scripts" : "bin", process.platform === "win32" ? "python.exe" : "python"),
+  "python3",
+  "python",
+].filter(Boolean) as string[];
+const pythonPath = pythonCandidates.find((candidate) => !candidate.includes(path.sep) || fs.existsSync(candidate)) ?? "python";
 
 export default defineConfig({
   testDir: "./e2e",
