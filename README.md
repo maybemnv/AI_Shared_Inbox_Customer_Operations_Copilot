@@ -18,30 +18,46 @@ Next.js operator workbench for the seeded freight-delay conversation.
 - Queue/realtime: no queue or realtime product is configured. Ingestion and
   fixture commands are synchronous and return current snapshots/activity.
 - UI: `apps/web` is a Next.js workbench using the shared root `design.md` tokens
-  and layout grammar. Secondary routes currently reuse the workbench shell;
-  route-specific analytics, rules, customer, and integration views remain.
+  and layout grammar. `/inbox` is the only completed route; secondary product
+  areas remain planned and are not presented as completed navigation.
 
 ## Run locally
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pytest -q
-python -m uvicorn app.main:app --reload
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -B -m pytest -p no:cacheprovider -q
+python -m ruff check --no-cache app tests
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
 
 # In another terminal
-cd apps/web
-npm install
-npm run dev
+Set-Location apps/web
+npm ci
+npm run build
+$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8103"
+npm run dev -- --hostname 127.0.0.1 --port 3103
 ```
 
-The API is available at `http://127.0.0.1:8000` and the workbench at
-`http://localhost:3000/inbox`. Set `NEXT_PUBLIC_API_BASE_URL` in
-`apps/web/.env.local` only when the API is not running at the local default.
+The API is available at `http://127.0.0.1:8103` and the workbench at
+`http://127.0.0.1:3103/inbox`.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8103/healthz
+Invoke-RestMethod http://127.0.0.1:8103/readyz
+Invoke-RestMethod http://127.0.0.1:8103/api/v1/demo/reset -Method Post
+```
+
+Reset is repeat-safe and affects only the in-memory fixture. No paid
+credentials or live integrations are required. Stop both terminals with
+`Ctrl+C`.
 
 ## Fixture endpoints
 
 - `GET /healthz` - process health.
 - `GET /readyz` - explicit fixture-only dependency status.
+- `POST /api/v1/demo/reset` - reset only the in-memory fixture and reseed the
+  canonical conversation.
 - `GET /api/v1/conversations?workspace_id=demo-workspace` - seeded inbox list.
 - `GET /api/v1/conversations/conversation-ft-204?workspace_id=demo-workspace` - detail.
 - `POST /api/v1/conversations/{id}/ai/run` - deterministic fixture classification/routing.

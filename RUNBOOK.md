@@ -7,20 +7,41 @@ The supported client walkthrough is fixture-first. The FastAPI process uses
 authentication, queue workers, realtime, and live connector credentials are
 prepared as boundaries but are not wired or production-validated.
 
+The showcase is fixture-only and needs no paid credentials. Docker is not
+required for the local walkthrough. The reset command below affects only the
+running in-memory fixture process.
+
 ## Start, check, reset
 
 ```powershell
-python -m pytest -q
-python -m uvicorn app.main:app --reload --port 8000
-cd apps/web
+python -m pip install -r requirements-dev.txt
+python -B -m pytest -p no:cacheprovider -q
+python -m ruff check --no-cache app tests
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
+Set-Location apps/web
+npm ci
 npm run build
-npm run dev
+$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8103"
+npm run dev -- --hostname 127.0.0.1 --port 3103
 ```
 
-- API health: `GET /healthz`
-- Dependency honesty: `GET /readyz`
-- Connector state: `GET /api/v1/connectors`
-- Reset: stop and restart FastAPI; all fixture state is in memory.
+In a second terminal, verify and reset before opening
+`http://127.0.0.1:3103/inbox`:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8103/healthz
+Invoke-RestMethod http://127.0.0.1:8103/readyz
+Invoke-RestMethod http://127.0.0.1:8103/api/v1/demo/reset -Method Post
+```
+
+- API health: `GET http://127.0.0.1:8103/healthz`
+- Dependency honesty and seeded data: `GET http://127.0.0.1:8103/readyz`
+- Connector state: `GET http://127.0.0.1:8103/api/v1/connectors`
+- Reset: `POST http://127.0.0.1:8103/api/v1/demo/reset`; repeat-safe and
+  in-memory only.
+- Browser smoke: `npm run test:e2e` from `apps/web`; Playwright starts both
+  local processes on ports `8103` and `3103` and requires its installed browser.
+- Shutdown: press `Ctrl+C` in each API/web terminal.
 
 ## Sync and quarantine
 
