@@ -1,5 +1,5 @@
-import { InboxWorkbench } from "../../../components/InboxWorkbench";
+import { PlannedPage } from "../../../components/InboxWorkbench";
 
 export default function IntegrationsPage() {
-  return <InboxWorkbench />;
+  return <PlannedPage area="Integrations" />;
 }

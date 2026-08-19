@@ -36,26 +36,43 @@ boundary has an owner, secret, health check, rollback path, and acceptance run.
 
 ## Local fixture setup
 
+The showcase is local and fixture-only. It does not require paid credentials,
+Docker, Supabase, or a live provider. `POST /api/v1/demo/reset` clears only the
+in-memory `InMemoryInbox` process and reseeds the canonical freight-delay event.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pytest -q
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m pip install -r requirements-dev.txt
+python -B -m pytest -p no:cacheprovider -q
+python -m ruff check --no-cache app tests
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
 ```
 
 In a second terminal:
 
 ```powershell
 Set-Location apps/web
-npm install
+npm ci
+npx playwright install chromium
 npm run build
-npm run dev
+$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8103"
+npm run dev -- --hostname 127.0.0.1 --port 3103
 ```
 
-Open `http://localhost:3000/inbox`. The API is available at
-`http://127.0.0.1:8000`; `/healthz` and `/readyz` must report fixture mode.
-Restarting the API resets the in-memory fixture state.
+Open `http://127.0.0.1:3103/inbox`. The API is available at
+`http://127.0.0.1:8103`; `/healthz` reports process health and `/readyz`
+reports the seeded fixture conversation separately from unavailable durable
+dependencies.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8103/healthz
+Invoke-RestMethod http://127.0.0.1:8103/readyz
+Invoke-RestMethod http://127.0.0.1:8103/api/v1/demo/reset -Method Post
+```
+
+Reset is safe to repeat and affects only the running in-memory fixture. Stop
+the API and web terminals with `Ctrl+C` when the walkthrough is complete.
 
 For a non-default API origin, create `apps/web/.env.local` with
 `NEXT_PUBLIC_API_BASE_URL=https://<api-host>`. The browser must never receive
@@ -84,9 +101,9 @@ migrations, RLS policies, and authentication tests are complete.
 | Variable | Purpose | Current status |
 |---|---|---|
 | `DEMO_MODE` | Select fixture or future durable mode | `fixture` only; no switch is wired |
-| `API_HOST` / `API_PORT` | FastAPI bind address | Local defaults `127.0.0.1` / `8000` |
+| `API_HOST` / `API_PORT` | FastAPI bind address | Showcase command uses `127.0.0.1` / `8103` |
 | `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API | Local origins are hard-coded today; production config remains open |
-| `NEXT_PUBLIC_API_BASE_URL` | Browser API origin | Optional; local API default is used |
+| `NEXT_PUBLIC_API_BASE_URL` | Browser API origin | Showcase uses `http://127.0.0.1:8103` |
 | `SUPABASE_URL` | Supabase project URL | Future; client supplies later |
 | `SUPABASE_ANON_KEY` | Browser-safe Auth client key | Future; not used by current UI |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side migration/background access | Future secret; never commit or expose |
@@ -100,12 +117,13 @@ Git history. The client adds secret values through the hosting secret store.
 
 ## Demo preflight
 
-1. Start from a clean `master` checkout and run `python -m pytest -q`.
-2. Run `python -m ruff check --no-cache app tests` and
-   `npm audit --audit-level=high` from `apps/web`.
-3. Run `npm run build` from `apps/web`.
-4. Confirm `/healthz` is `ok` and `/readyz` explicitly reports fixture-only
-   dependencies.
+1. Install `requirements-dev.txt` and run
+   `python -B -m pytest -p no:cacheprovider -q`.
+2. Run `python -m ruff check --no-cache app tests`.
+3. From `apps/web`, run `npm ci`, `npm run build`, and `npm run test:e2e`.
+4. Start API `8103` and web `3103`, then confirm `/healthz` is `ok` and
+   `/readyz` reports the seeded conversation plus fixture-only dependencies.
+5. POST `/api/v1/demo/reset`, then open `/inbox` and show the seeded freight-delay conversation, classification,
 5. Open `/inbox`, show the seeded freight-delay conversation, classification,
    evidence, owner/queue, SLA, draft, approval, and activity states.
 6. Demonstrate edit → exact-version approval → separate fixture-only send.
@@ -121,8 +139,8 @@ Git history. The client adds secret values through the hosting secret store.
   escalation, and retry paths are deterministic fixtures.
 - `db/migrations/001_initial.sql` and `db/seed_freight_demo.sql` are prepared
   but have not been run against a Supabase project from this checkout.
-- Secondary route pages reuse the workbench shell; route-specific analytics,
-  rules, customer, and integration views still need implementation.
+- `/inbox` is the only completed browser route; analytics, rules, customer, and
+  integration views remain planned and are not presented as complete links.
 - TLS, secret rotation, retention/deletion, observability, backups, incident
   recovery, and accessibility/reconnect acceptance remain outstanding.
 

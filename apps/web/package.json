@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "next": "^16.3.0",
@@ -16,6 +17,7 @@
     "@types/node": "22.10.2",
     "@types/react": "19.0.6",
     "@types/react-dom": "19.0.2",
+    "@playwright/test": "1.57.0",
     "typescript": "5.7.3"
   }
 }

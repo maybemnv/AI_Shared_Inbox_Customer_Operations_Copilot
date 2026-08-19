@@ -104,6 +104,32 @@ class InMemoryInbox:
         self._escalation_events: list[dict[str, object]] = []
         self._lock = RLock()
 
+    def reset(self, event: NormalizedInboundEvent) -> IngestResult:
+        """Reset this in-memory fixture repository and seed one canonical event."""
+
+        with self._lock:
+            self._events.clear()
+            self._event_to_conversation.clear()
+            self._message_to_conversation.clear()
+            self._conversations.clear()
+            self._comment_commands.clear()
+            self._outbound_actions.clear()
+            self._sync_jobs.clear()
+            self._sync_commands.clear()
+            self._connector_state.clear()
+            self._connector_state.update(
+                {
+                    definition["id"]: {
+                        "status": "available",
+                        "last_sync_at": None,
+                        "cursor": None,
+                    }
+                    for definition in _CONNECTOR_DEFINITIONS
+                }
+            )
+            self._escalation_events.clear()
+            return self.ingest(event)
+
     def ingest(self, event: NormalizedInboundEvent) -> IngestResult:
         event_key = (
             event.workspace_id,

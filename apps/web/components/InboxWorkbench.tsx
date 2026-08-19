@@ -17,10 +17,6 @@ import {
 
 const navItems = [
   ["Inbox", "/inbox"],
-  ["Customers", "/customers/demo-customer"],
-  ["Rules", "/rules"],
-  ["Analytics", "/analytics"],
-  ["Integrations", "/settings/integrations"],
 ];
 
 function stateClass(value: string | null | undefined) {
@@ -160,7 +156,7 @@ export function InboxWorkbench({
           <div className="stat-cell"><span className="data-label">Owner</span><strong className="stat-value">{activeOwner}</strong></div>
         </section>
 
-        {error && <div className="error-banner" role="alert">{error}. The API is fixture-first; check FastAPI is running on port 8000.</div>}
+        {error && <div className="error-banner" role="alert">{error}. The API is fixture-first; check FastAPI is running on port 8103.</div>}
         {notice && <div className="draft-warning" role="status">{notice}</div>}
 
         {loading ? (
@@ -198,11 +194,11 @@ export function InboxWorkbench({
                     <h2>{selectedLabel}</h2>
                     <div className="detail-meta"><span>{selected.messages[0]?.sender.name}</span><span>·</span><span>{selected.messages[0]?.sender.address}</span><span>·</span><span className="mono">v{selected.version}</span></div>
                     <div className="action-row">
-                      {!draft && <button className="button" disabled={working} onClick={() => void execute(() => runDraft(selected.id), "Evidence-backed draft generated.")} type="button">Run safe draft</button>}
-                      {draft && <button className="button" disabled={working} onClick={() => void execute(() => runDraft(selected.id), "Draft context refreshed.")} type="button">Refresh AI view</button>}
-                      <button className="button secondary" disabled={working} onClick={() => void execute(() => claimConversation(selected.id, selected.version), "Conversation claimed by demo operator.")} type="button">Claim</button>
-                      {selected.sla_state === "not_started" && <button className="button secondary" disabled={working} onClick={() => void execute(() => startSla(selected.id, selected.version), "SLA timer started.")} type="button">Start SLA</button>}
-                      {selected.status !== "resolved" && <button className="button secondary" disabled={working} onClick={() => void execute(() => resolveConversation(selected.id, selected.version), "Conversation resolved.")} type="button">Resolve</button>}
+                      {!draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void execute(() => runDraft(selected.id), "Evidence-backed draft generated.")} type="button">Run safe draft</button>}
+                      {draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void execute(() => runDraft(selected.id), "Draft context refreshed.")} type="button">Refresh AI view</button>}
+                      <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => claimConversation(selected.id, selected.version), "Conversation claimed by demo operator.")} type="button">Claim</button>
+                      {selected.sla_state === "not_started" && <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => startSla(selected.id, selected.version), "SLA timer started.")} type="button">Start SLA</button>}
+                      {selected.status !== "resolved" && <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => resolveConversation(selected.id, selected.version), "Conversation resolved.")} type="button">Resolve</button>}
                     </div>
                   </div>
 
@@ -221,7 +217,7 @@ export function InboxWorkbench({
 
                   <div className="detail-section">
                     <div className="section-title-row"><h3>Response draft</h3><span className={stateClass(draft?.state)}>{draft?.state ?? "not generated"}</span></div>
-                    {!draft ? <p className="muted">No draft exists. Generation will create an editable response with evidence and missing-evidence warnings.</p> : <><div className="draft-warning">{hasMissingEvidence ? `Missing evidence: ${draft.missing_evidence.join(", ")}. The draft does not promise a delivery date.` : "Evidence complete for the supported fixture path."}</div><textarea aria-label="Editable response draft" className="draft-body" onChange={(event) => setDraftBody(event.target.value)} value={draftBody} /><div className="draft-toolbar"><span className="mono muted">draft v{draft.version} · {draft.recipient}</span><div className="action-row"><button className="button secondary" disabled={working || draftBody === draft.body} onClick={() => void execute(() => editDraft(draft.id, draftBody, draft.version), "Draft edited; approval reset.")} type="button">Save edit</button><button className="button" disabled={working || !canApprove} onClick={() => void execute(() => approveDraft(draft.id, draft.version), "Exact draft version approved.")} type="button">Approve v{draft.version}</button><button className="button" disabled={working || !canSend} onClick={() => void execute(() => sendDraft(draft.id, draft.approval!.approval_id), "Fixture send recorded; no live provider was called.")} type="button">Send approved</button></div></div></>}
+                    {!draft ? <p className="muted">No draft exists. Generation will create an editable response with evidence and missing-evidence warnings.</p> : <><div className="draft-warning">{hasMissingEvidence ? `Missing evidence: ${draft.missing_evidence.join(", ")}. The draft does not promise a delivery date.` : "Evidence complete for the supported fixture path."}</div><textarea aria-label="Editable response draft" className="draft-body" onChange={(event) => setDraftBody(event.target.value)} value={draftBody} /><div className="draft-toolbar"><span className="mono muted">draft v{draft.version} · {draft.recipient}</span><div className="action-row"><button className="button secondary" disabled={working || Boolean(error) || draftBody === draft.body} onClick={() => void execute(() => editDraft(draft.id, draftBody, draft.version), "Draft edited; approval reset.")} type="button">Save edit</button><button className="button" disabled={working || Boolean(error) || !canApprove} onClick={() => void execute(() => approveDraft(draft.id, draft.version), "Exact draft version approved.")} type="button">Approve v{draft.version}</button><button className="button" disabled={working || Boolean(error) || !canSend} onClick={() => void execute(() => sendDraft(draft.id, draft.approval!.approval_id), "Fixture send recorded; no live provider was called.")} type="button">Send approved</button></div></div></>}
                   </div>
                 </>
               )}
@@ -235,6 +231,29 @@ export function InboxWorkbench({
       </div>
 
       <footer className="inline-rule"><span>Human control boundary · generation, approval, and send are separate actions.</span><span className="mono">workspace: demo-workspace</span></footer>
+    </main>
+  );
+}
+
+export function PlannedPage({ area }: { area: string }) {
+  return (
+    <main className="shell">
+      <header className="shell-header">
+        <div className="brand-lockup">
+          <span className="brand-mark">AO</span>
+          <div>
+            <div className="eyebrow">Customer operations</div>
+            <div className="brand-name">Shared inbox copilot</div>
+          </div>
+        </div>
+        <div className="mode-pill">Fixture mode · live unconfigured</div>
+      </header>
+      <section className="panel" aria-labelledby="planned-heading">
+        <div className="eyebrow">Planned surface</div>
+        <h1 id="planned-heading">{area} is planned</h1>
+        <p>This fixture showcase does not implement this workflow yet.</p>
+        <Link className="button" href="/inbox">Return to Inbox</Link>
+      </section>
     </main>
   );
 }
