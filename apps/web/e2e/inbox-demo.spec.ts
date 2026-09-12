@@ -159,6 +159,9 @@ test("draft failure simulation stops after three attempts", async ({ page }) => 
   const simulate = page.getByRole("button", { name: "Simulate draft failure" });
   await simulate.click();
   await simulate.click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Retry draft (2/3)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Simulate draft failure" })).toBeVisible();
   await simulate.click();
   await expect(page.getByText("Manual recovery required after three failed attempts.")).toBeVisible();
   await expect(simulate).toBeHidden();

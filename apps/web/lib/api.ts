@@ -28,6 +28,7 @@ export type Conversation = {
   sla: { due_at: string | null; warning_at: string | null } | null;
   escalation: { connector: string; state: string; reason: string } | null;
   version: number;
+  draft_retry_attempts: number;
   subject: string | null;
   messages: Array<{
     id: string;

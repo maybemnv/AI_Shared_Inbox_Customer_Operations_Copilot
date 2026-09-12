@@ -219,7 +219,13 @@ class InMemoryInbox:
                 and conversation["workspace_id"] != workspace_id
             ):
                 conversation = None
-            return deepcopy(conversation) if conversation is not None else None
+            if conversation is None:
+                return None
+            result = deepcopy(conversation)
+            result["draft_retry_attempts"] = self._draft_retry_attempts.get(
+                (str(conversation["workspace_id"]), conversation_id), 0
+            )
+            return result
 
     def list_conversations(
         self,
@@ -249,7 +255,11 @@ class InMemoryInbox:
                     continue
                 if channel is not None and conversation["channel"] != channel:
                     continue
-                conversations.append(deepcopy(conversation))
+                result = deepcopy(conversation)
+                result["draft_retry_attempts"] = self._draft_retry_attempts.get(
+                    (str(conversation["workspace_id"]), str(conversation["id"])), 0
+                )
+                conversations.append(result)
             return conversations
 
     def run_ai(

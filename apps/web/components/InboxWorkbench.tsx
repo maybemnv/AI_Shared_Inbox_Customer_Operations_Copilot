@@ -47,7 +47,6 @@ export function InboxWorkbench({
   const [notice, setNotice] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
   const [conflict, setConflict] = useState<Conversation | null>(null);
-  const [draftAttempts, setDraftAttempts] = useState(0);
   const polling = useRef(false);
   const selectedId = useRef<string | null>(null);
   const selectedVersion = useRef<number | null>(null);
@@ -150,11 +149,10 @@ export function InboxWorkbench({
     setNotice(null);
     try {
       await runDraft(selected.id, failureMode);
-      setDraftAttempts(0);
       setNotice("Evidence-backed draft generated.");
       await load(selected.id);
     } catch (caught) {
-      setDraftAttempts((attempts) => attempts + 1);
+      await load(selected.id);
       setError(caught instanceof Error ? caught.message : "Draft generation failed");
     } finally {
       setWorking(false);
@@ -274,9 +272,9 @@ export function InboxWorkbench({
                     <div className="detail-meta"><span>{selected.messages[0]?.sender.name}</span><span>·</span><span>{selected.messages[0]?.sender.address}</span><span>·</span><span className="mono">v{selected.version}</span></div>
                     <div className="action-row">
                       {!draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void generateDraft()} type="button">Run safe draft</button>}
-                      {!draft && draftAttempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft("transient")} type="button">Simulate draft failure</button>}
-                      {!draft && draftAttempts > 0 && draftAttempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft()} type="button">Retry draft ({draftAttempts}/3)</button>}
-                      {!draft && draftAttempts >= 3 && <p className="muted">Manual recovery required after three failed attempts.</p>}
+                      {!draft && selected.draft_retry_attempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft("transient")} type="button">Simulate draft failure</button>}
+                      {!draft && selected.draft_retry_attempts > 0 && selected.draft_retry_attempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft()} type="button">Retry draft ({selected.draft_retry_attempts}/3)</button>}
+                      {!draft && selected.draft_retry_attempts >= 3 && <p className="muted">Manual recovery required after three failed attempts.</p>}
                       {draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void generateDraft()} type="button">Refresh AI view</button>}
                       <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => claimConversation(selected.id, selected.version), "Conversation claimed by demo operator.")} type="button">Claim</button>
                       {selected.sla_state === "not_started" && <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => startSla(selected.id, selected.version), "SLA timer started.")} type="button">Start SLA</button>}
