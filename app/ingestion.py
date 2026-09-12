@@ -32,6 +32,10 @@ class EvidenceRequiredError(Exception):
         self.missing_fields = missing_fields
 
 
+class DraftGenerationError(Exception):
+    pass
+
+
 _ASSIGNMENT_RULES = [
     {
         "id": "rule-shipment-delay",
@@ -247,6 +251,7 @@ class InMemoryInbox:
         conversation_id: str,
         *,
         action: str,
+        failure_mode: str | None = None,
         workspace_id: str | None = None,
     ) -> dict[str, object]:
         if action not in {
@@ -262,6 +267,8 @@ class InMemoryInbox:
 
         with self._lock:
             conversation = self._require_conversation(conversation_id, workspace_id)
+            if action == "draft" and failure_mode == "transient":
+                raise DraftGenerationError("fixture_transient_draft_failure")
             if action in {"extract", "draft"}:
                 self._ensure_extracted_entities(conversation)
             if action in {"retrieve", "summarize", "draft"}:
@@ -825,6 +832,45 @@ class InMemoryInbox:
 
     def list_rules(self) -> list[dict[str, object]]:
         return deepcopy(_ASSIGNMENT_RULES)
+
+    def get_customer(self, customer_id: str, *, workspace_id: str) -> dict[str, object]:
+        with self._lock:
+            conversations = [
+                deepcopy(conversation)
+                for conversation in self._conversations.values()
+                if conversation["workspace_id"] == workspace_id
+                and conversation["id"] == "conversation-ft-204"
+            ]
+            if customer_id != "customer-jordan-lee" or not conversations:
+                raise ResourceNotFoundError(customer_id)
+            conversation = conversations[0]
+            sender = conversation["messages"][0]["sender"]
+            return {
+                "id": customer_id,
+                "name": sender["name"],
+                "address": sender["address"],
+                "conversations": conversations,
+            }
+
+    def analytics(self, *, workspace_id: str) -> dict[str, object]:
+        with self._lock:
+            conversations = [
+                conversation
+                for conversation in self._conversations.values()
+                if conversation["workspace_id"] == workspace_id
+            ]
+            return {
+                "mode": "fixture",
+                "open_conversations": sum(
+                    conversation["status"] == "open" for conversation in conversations
+                ),
+                "high_priority_conversations": sum(
+                    conversation["priority"] == "high" for conversation in conversations
+                ),
+                "activity_events": sum(
+                    len(conversation["activity"]) for conversation in conversations
+                ),
+            }
 
     @property
     def event_count(self) -> int:

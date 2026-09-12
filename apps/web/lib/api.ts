@@ -85,6 +85,16 @@ export type Draft = {
   approval: { approval_id: string; draft_version: number } | null;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly currentVersion?: number,
+  ) {
+    super(message);
+  }
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8103";
 
@@ -96,7 +106,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.message ?? `API request failed (${response.status})`);
+    throw new ApiError(
+      payload.message ?? `API request failed (${response.status})`,
+      payload.code,
+      payload.currentVersion,
+    );
   }
   return payload as T;
 }
@@ -114,11 +128,37 @@ export async function getConversation(id: string): Promise<Conversation> {
   );
 }
 
-export async function runDraft(id: string) {
+export async function runDraft(id: string, failureMode?: "transient") {
   return request<{ draft: Draft }>(
     `/api/v1/conversations/${id}/ai/run`,
-    { method: "POST", body: JSON.stringify({ action: "draft" }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "draft", failure_mode: failureMode }),
+    },
   );
+}
+
+export type Customer = {
+  id: string;
+  name: string;
+  address: string;
+  conversations: Conversation[];
+};
+
+export function getCustomer(id: string) {
+  return request<Customer>(`/api/v1/customers/${id}?workspace_id=demo-workspace`);
+}
+
+export function listRules() {
+  return request<{ items: Array<{ id: string; priority: number; enabled: boolean; conditions: Record<string, string>; target: Record<string, string | null> }> }>("/api/v1/rules");
+}
+
+export function listConnectors() {
+  return request<{ items: Array<{ id: string; connector: string; mode: string; live_status: string; status: string; cursor: string | null }> }>("/api/v1/connectors");
+}
+
+export function getAnalytics() {
+  return request<{ mode: string; open_conversations: number; high_priority_conversations: number; activity_events: number }>("/api/v1/analytics?workspace_id=demo-workspace");
 }
 
 export async function claimConversation(id: string, version: number) {

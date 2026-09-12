@@ -898,3 +898,7 @@ Demoable output: a connector matrix shows working, blocked, and unknown capabili
 ### Source boundary reminder
 
 No external source, provider version, model benchmark, team assumption, budget assumption, or external deadline is used as a verified product fact. Provider capabilities and implementation structure are explicitly labeled `[uncertain]` or `[inferred]` where required.
+
+## Local fixture completion
+
+The fixture workspace exposes customer, rules, connector and analytics surfaces from the in-memory inbox only. Draft generation can expose a deterministic retryable fixture failure; retry stops after three attempts and no send is created by generation. While the tab is visible, the inbox polls every five seconds without overlapping reads. Dirty draft text stays local, and an observed newer version requires an explicit reload or reapply before a versioned save, approval, or send can continue.

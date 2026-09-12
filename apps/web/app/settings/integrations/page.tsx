@@ -1,5 +1,5 @@
-import { PlannedPage } from "../../../components/InboxWorkbench";
+import { IntegrationsSurface } from "../../../components/FixtureSurface";
 
 export default function IntegrationsPage() {
-  return <PlannedPage area="Integrations" />;
+  return <IntegrationsSurface />;
 }

@@ -166,3 +166,10 @@ The full checklist below remains the source of the complete Phase 0-6 scope; thi
 - [ ] Tests prove workspace scoping, audit coverage, idempotency, collision protection, and SLA correctness.
 - [ ] Every live integration claim is verified or labeled as fixture, blocked, or unknown.
 - [ ] A client can start, reset, rehearse, and understand the prototype from the README and demo script.
+
+## Local fixture completion
+
+- [x] Replace the fixture secondary-route placeholders with customer, assignment-rule, connector, and event-derived analytics surfaces.
+- [x] Add deterministic retryable draft failure, bounded three-attempt operator retry, and explicit manual-recovery state without creating an outbound action.
+- [x] Add visible-tab five-second polling with no overlapping read, dirty draft preservation, and explicit stale-version reload/reapply recovery.
+- [x] Add loopback browser coverage for secondary routes, retry, dirty draft polling, and stale-version recovery.

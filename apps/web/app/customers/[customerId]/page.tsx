@@ -1,5 +1,5 @@
-import { PlannedPage } from "../../../components/InboxWorkbench";
+import { CustomerSurface } from "../../../components/FixtureSurface";
 
 export default function CustomerPage() {
-  return <PlannedPage area="Customers" />;
+  return <CustomerSurface />;
 }
