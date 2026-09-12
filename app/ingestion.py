@@ -32,6 +32,14 @@ class EvidenceRequiredError(Exception):
         self.missing_fields = missing_fields
 
 
+class DraftGenerationError(Exception):
+    pass
+
+
+class DraftRetryLimitError(Exception):
+    pass
+
+
 _ASSIGNMENT_RULES = [
     {
         "id": "rule-shipment-delay",
@@ -93,6 +101,7 @@ class InMemoryInbox:
         ] = {}
         self._sync_jobs: dict[str, dict[str, object]] = {}
         self._sync_commands: dict[tuple[str, str], str] = {}
+        self._draft_retry_attempts: dict[tuple[str, str], int] = {}
         self._connector_state: dict[str, dict[str, object]] = {
             definition["id"]: {
                 "status": "available",
@@ -116,6 +125,7 @@ class InMemoryInbox:
             self._outbound_actions.clear()
             self._sync_jobs.clear()
             self._sync_commands.clear()
+            self._draft_retry_attempts.clear()
             self._connector_state.clear()
             self._connector_state.update(
                 {
@@ -209,7 +219,13 @@ class InMemoryInbox:
                 and conversation["workspace_id"] != workspace_id
             ):
                 conversation = None
-            return deepcopy(conversation) if conversation is not None else None
+            if conversation is None:
+                return None
+            result = deepcopy(conversation)
+            result["draft_retry_attempts"] = self._draft_retry_attempts.get(
+                (str(conversation["workspace_id"]), conversation_id), 0
+            )
+            return result
 
     def list_conversations(
         self,
@@ -239,7 +255,11 @@ class InMemoryInbox:
                     continue
                 if channel is not None and conversation["channel"] != channel:
                     continue
-                conversations.append(deepcopy(conversation))
+                result = deepcopy(conversation)
+                result["draft_retry_attempts"] = self._draft_retry_attempts.get(
+                    (str(conversation["workspace_id"]), str(conversation["id"])), 0
+                )
+                conversations.append(result)
             return conversations
 
     def run_ai(
@@ -247,6 +267,7 @@ class InMemoryInbox:
         conversation_id: str,
         *,
         action: str,
+        failure_mode: str | None = None,
         workspace_id: str | None = None,
     ) -> dict[str, object]:
         if action not in {
@@ -262,6 +283,13 @@ class InMemoryInbox:
 
         with self._lock:
             conversation = self._require_conversation(conversation_id, workspace_id)
+            if action == "draft" and failure_mode == "transient":
+                retry_key = (str(conversation["workspace_id"]), conversation_id)
+                attempts = self._draft_retry_attempts.get(retry_key, 0) + 1
+                self._draft_retry_attempts[retry_key] = attempts
+                if attempts > 3:
+                    raise DraftRetryLimitError("fixture_draft_retry_limit_exceeded")
+                raise DraftGenerationError("fixture_transient_draft_failure")
             if action in {"extract", "draft"}:
                 self._ensure_extracted_entities(conversation)
             if action in {"retrieve", "summarize", "draft"}:
@@ -825,6 +853,45 @@ class InMemoryInbox:
 
     def list_rules(self) -> list[dict[str, object]]:
         return deepcopy(_ASSIGNMENT_RULES)
+
+    def get_customer(self, customer_id: str, *, workspace_id: str) -> dict[str, object]:
+        with self._lock:
+            conversations = [
+                deepcopy(conversation)
+                for conversation in self._conversations.values()
+                if conversation["workspace_id"] == workspace_id
+                and conversation["id"] == "conversation-ft-204"
+            ]
+            if customer_id != "customer-jordan-lee" or not conversations:
+                raise ResourceNotFoundError(customer_id)
+            conversation = conversations[0]
+            sender = conversation["messages"][0]["sender"]
+            return {
+                "id": customer_id,
+                "name": sender["name"],
+                "address": sender["address"],
+                "conversations": conversations,
+            }
+
+    def analytics(self, *, workspace_id: str) -> dict[str, object]:
+        with self._lock:
+            conversations = [
+                conversation
+                for conversation in self._conversations.values()
+                if conversation["workspace_id"] == workspace_id
+            ]
+            return {
+                "mode": "fixture",
+                "open_conversations": sum(
+                    conversation["status"] == "open" for conversation in conversations
+                ),
+                "high_priority_conversations": sum(
+                    conversation["priority"] == "high" for conversation in conversations
+                ),
+                "activity_events": sum(
+                    len(conversation["activity"]) for conversation in conversations
+                ),
+            }
 
     @property
     def event_count(self) -> int:

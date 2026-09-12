@@ -41,8 +41,7 @@ test("desktop completes the safe freight-delay operator path", async ({ page }) 
   await expect(page.getByText("Fixture mode", { exact: false })).toBeVisible();
 
   await page.goto("/analytics");
-  await expect(page.getByRole("heading", { name: "Analytics is planned" })).toBeVisible();
-  await expect(page.getByText("does not implement this workflow yet")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operational analytics" })).toBeVisible();
 });
 
 test("mobile keeps the workbench usable and blocks a failed send", async ({ page }) => {
@@ -70,4 +69,100 @@ test("mobile keeps the workbench usable and blocks a failed send", async ({ page
   await expect(page.locator(".error-banner")).toContainText("send_blocked");
   await expect(send).toBeDisabled();
   await expect(page.getByText("Fixture mode", { exact: false })).toBeVisible();
+});
+
+test("fixture routes and draft retry keep operator work local", async ({ page }) => {
+  await page.goto("/customers/customer-jordan-lee");
+  await expect(page.getByRole("heading", { name: "Customer profile" })).toBeVisible();
+  await expect(page.getByText("Jordan Lee", { exact: false })).toBeVisible();
+
+  await page.goto("/rules");
+  await expect(page.getByRole("heading", { name: "Assignment rules" })).toBeVisible();
+  await expect(page.getByText("rule-shipment-delay", { exact: true })).toBeVisible();
+
+  await page.goto("/settings/integrations");
+  await expect(page.getByRole("heading", { name: "Fixture connectors" })).toBeVisible();
+  await expect(page.getByText("not_configured", { exact: false })).toBeVisible();
+
+  await page.goto("/analytics");
+  await expect(page.getByRole("heading", { name: "Operational analytics" })).toBeVisible();
+
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "Simulate draft failure" }).click();
+  await expect(page.locator(".error-banner")).toContainText("fixture_transient_draft_failure");
+  await page.getByRole("button", { name: "Retry draft (1/3)" }).click();
+  await expect(page.getByLabel("Editable response draft")).toBeVisible();
+});
+
+test("visible polling preserves a dirty draft and offers stale recovery", async ({ page, request }) => {
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "Run safe draft" }).click();
+  const draft = page.getByLabel("Editable response draft");
+  await draft.fill("Unsaved operator correction.");
+
+  const current = await request.get(`${API_BASE}/api/v1/conversations/conversation-ft-204`);
+  const claimed = await request.post(`${API_BASE}/api/v1/conversations/conversation-ft-204/claim`, {
+    data: { actor_id: "second-operator", expected_version: (await current.json()).version },
+  });
+  expect(claimed.ok()).toBeTruthy();
+
+  await expect(page.getByText("Version conflict", { exact: false })).toBeVisible({ timeout: 8_000 });
+  await expect(draft).toHaveValue("Unsaved operator correction.");
+  await page.getByRole("button", { name: "Reapply my draft text" }).click();
+  await expect(draft).toHaveValue("Unsaved operator correction.");
+});
+
+test("secondary routes show a safe error when their fixture read fails", async ({ page }) => {
+  await page.route("**/api/v1/customers/customer-jordan-lee?workspace_id=demo-workspace", async (route) => {
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "fixture_unavailable" }) });
+  });
+  await page.goto("/customers/customer-jordan-lee");
+  await expect(page.locator(".error-banner")).toContainText("Fixture data is unavailable");
+});
+
+test("explicit conversation selection replaces the current detail", async ({ page }) => {
+  await page.route("**/api/v1/conversations?workspace_id=demo-workspace", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const second = { ...body.items[0], id: "conversation-ft-205", subject: "Second fixture conversation" };
+    await route.fulfill({ response, json: { ...body, items: [body.items[0], second] } });
+  });
+  await page.route("**/api/v1/conversations/conversation-ft-205*", async (route) => {
+    const response = await route.fetch({ url: "http://127.0.0.1:8103/api/v1/conversations/conversation-ft-204?workspace_id=demo-workspace" });
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, id: "conversation-ft-205", subject: "Second fixture conversation" } });
+  });
+
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: /Second fixture conversation/ }).click();
+  await expect(page.getByRole("heading", { name: "Second fixture conversation" })).toBeVisible();
+});
+
+test("customer route requests the selected customer id", async ({ page }) => {
+  let requestedPath = "";
+  await page.route("**/api/v1/customers/*?*", async (route) => {
+    requestedPath = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ name: "Acme Customer", address: "Fixture address", conversations: [] }),
+    });
+  });
+
+  await page.goto("/customers/customer-acme");
+  await expect(page.getByText("Acme Customer", { exact: false })).toBeVisible();
+  expect(requestedPath).toBe("/api/v1/customers/customer-acme");
+});
+
+test("draft failure simulation stops after three attempts", async ({ page }) => {
+  await page.goto("/inbox");
+  const simulate = page.getByRole("button", { name: "Simulate draft failure" });
+  await simulate.click();
+  await simulate.click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Retry draft (2/3)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Simulate draft failure" })).toBeVisible();
+  await simulate.click();
+  await expect(page.getByText("Manual recovery required after three failed attempts.")).toBeVisible();
+  await expect(simulate).toBeHidden();
 });

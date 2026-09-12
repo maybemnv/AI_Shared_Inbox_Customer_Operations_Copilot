@@ -88,3 +88,9 @@ No production migration or secret has been run from this checkout.
 - Supabase/RLS failure: keep fixture mode enabled and block live-data access.
 - Provider timeout: do not retry a non-idempotent write after an ambiguous result; inspect provider status first.
 - Draft conflict: reload current conversation/draft, review evidence, edit, approve, then send with a new intentional idempotency key only when no outbound action was created.
+
+## Local fixture retry and polling rehearsal
+
+Use **Simulate draft failure** only in fixture mode. It returns a retryable local failure; retry can be selected up to three attempts and does not send. Keep two local browser tabs on the same conversation, edit one draft without saving, mutate the other tab, then wait five seconds while the first tab is visible. The first tab retains its text and presents **Reload latest** or **Reapply my draft text**. Reapply only restores local text; save, approve, and send still use the refreshed exact version.
+
+On Windows, run browser checks with `PYTHON=python` so Playwright starts the local FastAPI fixture server rather than a nonexistent `python3` executable.

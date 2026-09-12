@@ -1,5 +1,5 @@
-import { PlannedPage } from "../../components/InboxWorkbench";
+import { RulesSurface } from "../../components/FixtureSurface";
 
 export default function RulesPage() {
-  return <PlannedPage area="Rules" />;
+  return <RulesSurface />;
 }

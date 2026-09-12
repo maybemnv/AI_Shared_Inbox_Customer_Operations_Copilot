@@ -1,5 +1,5 @@
-import { PlannedPage } from "../../components/InboxWorkbench";
+import { AnalyticsSurface } from "../../components/FixtureSurface";
 
 export default function AnalyticsPage() {
-  return <PlannedPage area="Analytics" />;
+  return <AnalyticsSurface />;
 }

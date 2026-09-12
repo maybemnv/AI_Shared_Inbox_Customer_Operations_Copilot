@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   approveDraft,
+  ApiError,
   claimConversation,
   Conversation,
   editDraft,
@@ -15,9 +16,7 @@ import {
   startSla,
 } from "../lib/api";
 
-const navItems = [
-  ["Inbox", "/inbox"],
-];
+const navItems = [["Inbox", "/inbox"], ["Customer", "/customers/customer-jordan-lee"], ["Rules", "/rules"], ["Integrations", "/settings/integrations"], ["Analytics", "/analytics"]];
 
 function stateClass(value: string | null | undefined) {
   const normalized = value?.toLowerCase().replaceAll("_", "-") ?? "neutral";
@@ -46,6 +45,28 @@ export function InboxWorkbench({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [conflict, setConflict] = useState<Conversation | null>(null);
+  const polling = useRef(false);
+  const selectedId = useRef<string | null>(null);
+  const selectedVersion = useRef<number | null>(null);
+  const dirty = useRef(false);
+
+  useEffect(() => { selectedId.current = selected?.id ?? null; }, [selected]);
+  useEffect(() => { selectedVersion.current = selected?.version ?? null; }, [selected]);
+  useEffect(() => { dirty.current = draftDirty; }, [draftDirty]);
+
+  const applyDetail = (detail: Conversation, preserveDirty = false) => {
+    if (preserveDirty && selectedId.current && selectedId.current !== detail.id) return;
+    if (preserveDirty && dirty.current && selectedVersion.current !== detail.version) {
+      setConflict(detail);
+      return;
+    }
+    if (preserveDirty && dirty.current) return;
+    setSelected(detail);
+    setDraftBody(detail.draft?.body ?? "");
+    setDraftDirty(false);
+  };
 
   const load = async (id?: string) => {
     setLoading(true);
@@ -56,8 +77,7 @@ export function InboxWorkbench({
       const target = id ?? initialConversationId ?? items[0]?.id;
       if (target) {
         const detail = await getConversation(target);
-        setSelected(detail);
-        setDraftBody(detail.draft?.body ?? "");
+        applyDetail(detail);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "API unavailable");
@@ -72,12 +92,31 @@ export function InboxWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialConversationId]);
 
+  useEffect(() => {
+    if (!selected?.id) return;
+    const id = selected.id;
+    const poll = async () => {
+      if (document.visibilityState !== "visible" || polling.current) return;
+      polling.current = true;
+      try {
+        const detail = await getConversation(id);
+        if (selectedId.current === id) applyDetail(detail, true);
+      } catch {
+        // Polling never replaces an operator's local work with a transient read error.
+      } finally {
+        polling.current = false;
+      }
+    };
+    const interval = window.setInterval(() => void poll(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [selected?.id]);
+
   const openConversation = async (id: string) => {
     setError(null);
     try {
       const detail = await getConversation(id);
-      setSelected(detail);
-      setDraftBody(detail.draft?.body ?? "");
+      setConflict(null);
+      applyDetail(detail);
       window.history.replaceState(null, "", `/inbox/${id}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Conversation unavailable");
@@ -94,10 +133,47 @@ export function InboxWorkbench({
       setNotice(success);
       await load(selected.id);
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "version_conflict") {
+        setConflict(await getConversation(selected.id));
+      }
       setError(caught instanceof Error ? caught.message : "Command failed");
     } finally {
       setWorking(false);
     }
+  };
+
+  const generateDraft = async (failureMode?: "transient") => {
+    if (!selected) return;
+    setWorking(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await runDraft(selected.id, failureMode);
+      setNotice("Evidence-backed draft generated.");
+      await load(selected.id);
+    } catch (caught) {
+      await load(selected.id);
+      setError(caught instanceof Error ? caught.message : "Draft generation failed");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const reloadConflict = () => {
+    if (!conflict) return;
+    setSelected(conflict);
+    setDraftBody(conflict.draft?.body ?? "");
+    setDraftDirty(false);
+    setConflict(null);
+    setError(null);
+  };
+
+  const reapplyConflict = () => {
+    if (!conflict) return;
+    setSelected(conflict);
+    setDraftDirty(true);
+    setConflict(null);
+    setError(null);
   };
 
   const openCount = conversations.filter((item) => item.status === "open").length;
@@ -157,6 +233,7 @@ export function InboxWorkbench({
         </section>
 
         {error && <div className="error-banner" role="alert">{error}. The API is fixture-first; check FastAPI is running on port 8103.</div>}
+        {conflict && <div className="error-banner" role="alert">Version conflict. A newer fixture version exists; your unsaved draft text is still local.<div className="action-row"><button className="button secondary" onClick={reloadConflict} type="button">Reload latest</button><button className="button" onClick={reapplyConflict} type="button">Reapply my draft text</button></div></div>}
         {notice && <div className="draft-warning" role="status">{notice}</div>}
 
         {loading ? (
@@ -194,8 +271,11 @@ export function InboxWorkbench({
                     <h2>{selectedLabel}</h2>
                     <div className="detail-meta"><span>{selected.messages[0]?.sender.name}</span><span>·</span><span>{selected.messages[0]?.sender.address}</span><span>·</span><span className="mono">v{selected.version}</span></div>
                     <div className="action-row">
-                      {!draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void execute(() => runDraft(selected.id), "Evidence-backed draft generated.")} type="button">Run safe draft</button>}
-                      {draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void execute(() => runDraft(selected.id), "Draft context refreshed.")} type="button">Refresh AI view</button>}
+                      {!draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void generateDraft()} type="button">Run safe draft</button>}
+                      {!draft && selected.draft_retry_attempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft("transient")} type="button">Simulate draft failure</button>}
+                      {!draft && selected.draft_retry_attempts > 0 && selected.draft_retry_attempts < 3 && <button className="button secondary" disabled={working} onClick={() => void generateDraft()} type="button">Retry draft ({selected.draft_retry_attempts}/3)</button>}
+                      {!draft && selected.draft_retry_attempts >= 3 && <p className="muted">Manual recovery required after three failed attempts.</p>}
+                      {draft && <button className="button" disabled={working || Boolean(error)} onClick={() => void generateDraft()} type="button">Refresh AI view</button>}
                       <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => claimConversation(selected.id, selected.version), "Conversation claimed by demo operator.")} type="button">Claim</button>
                       {selected.sla_state === "not_started" && <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => startSla(selected.id, selected.version), "SLA timer started.")} type="button">Start SLA</button>}
                       {selected.status !== "resolved" && <button className="button secondary" disabled={working || Boolean(error)} onClick={() => void execute(() => resolveConversation(selected.id, selected.version), "Conversation resolved.")} type="button">Resolve</button>}
@@ -217,7 +297,7 @@ export function InboxWorkbench({
 
                   <div className="detail-section">
                     <div className="section-title-row"><h3>Response draft</h3><span className={stateClass(draft?.state)}>{draft?.state ?? "not generated"}</span></div>
-                    {!draft ? <p className="muted">No draft exists. Generation will create an editable response with evidence and missing-evidence warnings.</p> : <><div className="draft-warning">{hasMissingEvidence ? `Missing evidence: ${draft.missing_evidence.join(", ")}. The draft does not promise a delivery date.` : "Evidence complete for the supported fixture path."}</div><textarea aria-label="Editable response draft" className="draft-body" onChange={(event) => setDraftBody(event.target.value)} value={draftBody} /><div className="draft-toolbar"><span className="mono muted">draft v{draft.version} · {draft.recipient}</span><div className="action-row"><button className="button secondary" disabled={working || Boolean(error) || draftBody === draft.body} onClick={() => void execute(() => editDraft(draft.id, draftBody, draft.version), "Draft edited; approval reset.")} type="button">Save edit</button><button className="button" disabled={working || Boolean(error) || !canApprove} onClick={() => void execute(() => approveDraft(draft.id, draft.version), "Exact draft version approved.")} type="button">Approve v{draft.version}</button><button className="button" disabled={working || Boolean(error) || !canSend} onClick={() => void execute(() => sendDraft(draft.id, draft.approval!.approval_id), "Fixture send recorded; no live provider was called.")} type="button">Send approved</button></div></div></>}
+                    {!draft ? <p className="muted">No draft exists. Generation will create an editable response with evidence and missing-evidence warnings.</p> : <><div className="draft-warning">{hasMissingEvidence ? `Missing evidence: ${draft.missing_evidence.join(", ")}. The draft does not promise a delivery date.` : "Evidence complete for the supported fixture path."}</div><textarea aria-label="Editable response draft" className="draft-body" onChange={(event) => { setDraftBody(event.target.value); setDraftDirty(event.target.value !== draft.body); }} value={draftBody} /><div className="draft-toolbar"><span className="mono muted">draft v{draft.version} · {draft.recipient}</span><div className="action-row"><button className="button secondary" disabled={working || Boolean(error) || draftBody === draft.body} onClick={() => void execute(() => editDraft(draft.id, draftBody, draft.version), "Draft edited; approval reset.")} type="button">Save edit</button><button className="button" disabled={working || Boolean(error) || !canApprove} onClick={() => void execute(() => approveDraft(draft.id, draft.version), "Exact draft version approved.")} type="button">Approve v{draft.version}</button><button className="button" disabled={working || Boolean(error) || !canSend} onClick={() => void execute(() => sendDraft(draft.id, draft.approval!.approval_id), "Fixture send recorded; no live provider was called.")} type="button">Send approved</button></div></div></>}
                   </div>
                 </>
               )}

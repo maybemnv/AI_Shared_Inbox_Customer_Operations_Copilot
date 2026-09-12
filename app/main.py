@@ -11,6 +11,8 @@ from app.ingestion import (
     ApprovalRequiredError,
     ConversationNotFoundError,
     EvidenceRequiredError,
+    DraftGenerationError,
+    DraftRetryLimitError,
     InMemoryInbox,
     ResourceNotFoundError,
     VersionConflictError,
@@ -28,6 +30,7 @@ class AiRunRequest(BaseModel):
         "draft",
     ]
     workspace_id: str = "demo-workspace"
+    failure_mode: Literal["transient"] | None = None
 
 
 class AssignmentRequest(BaseModel):
@@ -223,6 +226,31 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             fields={"missing_evidence": ",".join(exc.missing_fields)},
         )
 
+    @application.exception_handler(DraftGenerationError)
+    async def draft_generation_error_handler(
+        request: Request,
+        exc: DraftGenerationError,
+    ) -> JSONResponse:
+        del request
+        return _error_response(
+            status_code=503,
+            code="draft_generation_failed",
+            message=str(exc),
+            extra={"retryable": True},
+        )
+
+    @application.exception_handler(DraftRetryLimitError)
+    async def draft_retry_limit_handler(
+        request: Request,
+        exc: DraftRetryLimitError,
+    ) -> JSONResponse:
+        del request
+        return _error_response(
+            status_code=409,
+            code="draft_retry_limit_exceeded",
+            message=str(exc),
+        )
+
     @application.get("/healthz")
     def health() -> dict[str, object]:
         return {"status": "ok", "mode": "fixture"}
@@ -310,6 +338,7 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
         return repository.run_ai(
             conversation_id,
             action=request.action,
+            failure_mode=request.failure_mode,
             workspace_id=workspace_id or request.workspace_id,
         )
 
@@ -478,6 +507,17 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
     @application.get("/api/v1/rules")
     def list_rules() -> dict[str, object]:
         return {"items": get_repository().list_rules()}
+
+    @application.get("/api/v1/customers/{customer_id}")
+    def get_customer(
+        customer_id: str,
+        workspace_id: str = "demo-workspace",
+    ) -> dict[str, object]:
+        return get_repository().get_customer(customer_id, workspace_id=workspace_id)
+
+    @application.get("/api/v1/analytics")
+    def analytics(workspace_id: str = "demo-workspace") -> dict[str, object]:
+        return get_repository().analytics(workspace_id=workspace_id)
 
     return application
 

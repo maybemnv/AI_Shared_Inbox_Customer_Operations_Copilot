@@ -34,6 +34,11 @@ export default defineConfig({
       grep: /mobile keeps/,
       use: { ...devices["Pixel 5"], viewport: { width: 390, height: 844 } },
     },
+    {
+      name: "fixture",
+      grep: /fixture routes|visible polling|secondary routes|draft failure simulation|explicit conversation selection|customer route requests/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
+    },
   ],
   webServer: [
     {
