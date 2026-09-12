@@ -58,7 +58,7 @@ export function InboxWorkbench({
   useEffect(() => { dirty.current = draftDirty; }, [draftDirty]);
 
   const applyDetail = (detail: Conversation, preserveDirty = false) => {
-    if (selectedId.current && selectedId.current !== detail.id) return;
+    if (preserveDirty && selectedId.current && selectedId.current !== detail.id) return;
     if (preserveDirty && dirty.current && selectedVersion.current !== detail.version) {
       setConflict(detail);
       return;

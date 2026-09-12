@@ -120,6 +120,40 @@ test("secondary routes show a safe error when their fixture read fails", async (
   await expect(page.locator(".error-banner")).toContainText("Fixture data is unavailable");
 });
 
+test("explicit conversation selection replaces the current detail", async ({ page }) => {
+  await page.route("**/api/v1/conversations?workspace_id=demo-workspace", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const second = { ...body.items[0], id: "conversation-ft-205", subject: "Second fixture conversation" };
+    await route.fulfill({ response, json: { ...body, items: [body.items[0], second] } });
+  });
+  await page.route("**/api/v1/conversations/conversation-ft-205*", async (route) => {
+    const response = await route.fetch({ url: "http://127.0.0.1:8103/api/v1/conversations/conversation-ft-204?workspace_id=demo-workspace" });
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, id: "conversation-ft-205", subject: "Second fixture conversation" } });
+  });
+
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: /Second fixture conversation/ }).click();
+  await expect(page.getByRole("heading", { name: "Second fixture conversation" })).toBeVisible();
+});
+
+test("customer route requests the selected customer id", async ({ page }) => {
+  let requestedPath = "";
+  await page.route("**/api/v1/customers/*?*", async (route) => {
+    requestedPath = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ name: "Acme Customer", address: "Fixture address", conversations: [] }),
+    });
+  });
+
+  await page.goto("/customers/customer-acme");
+  await expect(page.getByText("Acme Customer", { exact: false })).toBeVisible();
+  expect(requestedPath).toBe("/api/v1/customers/customer-acme");
+});
+
 test("draft failure simulation stops after three attempts", async ({ page }) => {
   await page.goto("/inbox");
   const simulate = page.getByRole("button", { name: "Simulate draft failure" });

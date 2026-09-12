@@ -12,6 +12,7 @@ from app.ingestion import (
     ConversationNotFoundError,
     EvidenceRequiredError,
     DraftGenerationError,
+    DraftRetryLimitError,
     InMemoryInbox,
     ResourceNotFoundError,
     VersionConflictError,
@@ -236,6 +237,18 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             code="draft_generation_failed",
             message=str(exc),
             extra={"retryable": True},
+        )
+
+    @application.exception_handler(DraftRetryLimitError)
+    async def draft_retry_limit_handler(
+        request: Request,
+        exc: DraftRetryLimitError,
+    ) -> JSONResponse:
+        del request
+        return _error_response(
+            status_code=409,
+            code="draft_retry_limit_exceeded",
+            message=str(exc),
         )
 
     @application.get("/healthz")

@@ -22,8 +22,8 @@ function FixtureFailure() {
   return <p className="error-banner" role="alert">Fixture data is unavailable. Check the local fixture API and retry the route.</p>;
 }
 
-export function CustomerSurface() {
-  const { value: customer, failed } = useFixture(() => getCustomer("customer-jordan-lee"));
+export function CustomerSurface({ customerId }: { customerId: string }) {
+  const { value: customer, failed } = useFixture(() => getCustomer(customerId));
   return <Shell><section className="panel workbench"><div className="eyebrow">Fixture account</div><h1>Customer profile</h1>{failed ? <FixtureFailure /> : customer ? <><p>{customer.name} · {customer.address}</p><h2>Linked conversations</h2>{customer.conversations.map((conversation) => <Link className="conversation-row" href={`/inbox/${conversation.id}`} key={conversation.id}>{conversation.subject}</Link>)}</> : <p>Loading fixture customer…</p>}</section></Shell>;
 }
 

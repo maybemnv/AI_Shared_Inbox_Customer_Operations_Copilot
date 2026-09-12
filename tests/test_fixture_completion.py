@@ -19,6 +19,23 @@ def test_fixture_draft_failure_is_retryable_and_creates_no_draft():
     assert conversation.json()["draft"] is None
 
 
+def test_fixture_draft_failure_retry_budget_is_enforced_by_api():
+    client = TestClient(create_app(create_demo_inbox()))
+
+    failures = [
+        client.post(
+            "/api/v1/conversations/conversation-ft-204/ai/run",
+            json={"action": "draft", "failure_mode": "transient"},
+        )
+        for _ in range(4)
+    ]
+
+    assert [response.status_code for response in failures] == [503, 503, 503, 409]
+    assert all(response.json()["retryable"] is True for response in failures[:3])
+    assert failures[3].json()["code"] == "draft_retry_limit_exceeded"
+    assert failures[3].json()["retryable"] is False
+
+
 def test_fixture_secondary_read_models_are_available_without_live_connectors():
     client = TestClient(create_app(create_demo_inbox()))
 

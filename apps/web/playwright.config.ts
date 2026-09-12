@@ -36,7 +36,7 @@ export default defineConfig({
     },
     {
       name: "fixture",
-      grep: /fixture routes|visible polling|secondary routes|draft failure simulation/,
+      grep: /fixture routes|visible polling|secondary routes|draft failure simulation|explicit conversation selection|customer route requests/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
     },
   ],

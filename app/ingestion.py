@@ -36,6 +36,10 @@ class DraftGenerationError(Exception):
     pass
 
 
+class DraftRetryLimitError(Exception):
+    pass
+
+
 _ASSIGNMENT_RULES = [
     {
         "id": "rule-shipment-delay",
@@ -97,6 +101,7 @@ class InMemoryInbox:
         ] = {}
         self._sync_jobs: dict[str, dict[str, object]] = {}
         self._sync_commands: dict[tuple[str, str], str] = {}
+        self._draft_retry_attempts: dict[tuple[str, str], int] = {}
         self._connector_state: dict[str, dict[str, object]] = {
             definition["id"]: {
                 "status": "available",
@@ -120,6 +125,7 @@ class InMemoryInbox:
             self._outbound_actions.clear()
             self._sync_jobs.clear()
             self._sync_commands.clear()
+            self._draft_retry_attempts.clear()
             self._connector_state.clear()
             self._connector_state.update(
                 {
@@ -268,6 +274,11 @@ class InMemoryInbox:
         with self._lock:
             conversation = self._require_conversation(conversation_id, workspace_id)
             if action == "draft" and failure_mode == "transient":
+                retry_key = (str(conversation["workspace_id"]), conversation_id)
+                attempts = self._draft_retry_attempts.get(retry_key, 0) + 1
+                self._draft_retry_attempts[retry_key] = attempts
+                if attempts > 3:
+                    raise DraftRetryLimitError("fixture_draft_retry_limit_exceeded")
                 raise DraftGenerationError("fixture_transient_draft_failure")
             if action in {"extract", "draft"}:
                 self._ensure_extracted_entities(conversation)
