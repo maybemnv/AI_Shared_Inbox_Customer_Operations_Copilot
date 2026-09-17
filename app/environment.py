@@ -26,7 +26,11 @@ def validate_runtime() -> None:
         if not os.getenv(name)
     ]
     if missing:
-        raise RuntimeConfigurationError("production runtime requires: " + ", ".join(missing))
+        raise RuntimeConfigurationError(
+            "production runtime requires: "
+            + ", ".join(missing)
+            + "; use APP_ENV=local-fixture for the fixture repository"
+        )
     if os.getenv("QUEUE_PROVIDER") not in {"redis", "postgres-outbox"}:
         raise RuntimeConfigurationError("QUEUE_PROVIDER must be redis or postgres-outbox outside fixture mode")
 

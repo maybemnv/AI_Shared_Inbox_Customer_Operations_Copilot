@@ -128,11 +128,12 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
     seeded_conversation_id = "conversation-ft-204"
     runtime_repository = (
         fixed_repository
-        or (demo_inbox if is_local_fixture() else PostgresInbox(__import__("os").environ["DATABASE_URL"]))
+        if fixed_repository is not None
+        else (None if is_local_fixture() else PostgresInbox(__import__("os").environ["DATABASE_URL"]))
     )
 
     def get_repository() -> InMemoryInbox:
-        return runtime_repository
+        return runtime_repository if runtime_repository is not None else demo_inbox
 
     application = FastAPI(
         title="AI Shared Inbox Customer Operations Copilot",

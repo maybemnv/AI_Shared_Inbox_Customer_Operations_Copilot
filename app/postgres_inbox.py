@@ -5,8 +5,6 @@ from __future__ import annotations
 import pickle
 from collections.abc import Callable
 
-import psycopg
-
 from app.ingestion import InMemoryInbox
 
 
@@ -42,6 +40,8 @@ class PostgresInbox(InMemoryInbox):
             return result
 
     def _connect(self):
+        import psycopg
+
         return psycopg.connect(self.database_url)
 
     def _load(self) -> None:
