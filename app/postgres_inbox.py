@@ -35,9 +35,15 @@ class PostgresInbox(InMemoryInbox):
 
     def _mutate(self, method: Callable, *args, **kwargs):
         with self._lock:
-            result = method(*args, **kwargs)
-            self._persist()
-            return result
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                    ("inbox:production",),
+                )
+                self._load_cursor(cursor)
+                result = method(*args, **kwargs)
+                self._persist_cursor(cursor)
+                return result
 
     def _connect(self):
         import psycopg
@@ -46,11 +52,14 @@ class PostgresInbox(InMemoryInbox):
 
     def _load(self) -> None:
         with self._connect() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT payload FROM inbox_runtime_snapshots WHERE workspace_id = %s",
-                ("production",),
-            )
-            row = cursor.fetchone()
+            self._load_cursor(cursor)
+
+    def _load_cursor(self, cursor) -> None:
+        cursor.execute(
+            "SELECT payload FROM inbox_runtime_snapshots WHERE workspace_id = %s",
+            ("production",),
+        )
+        row = cursor.fetchone()
         if row is None:
             return
         state = pickle.loads(bytes(row[0]))  # noqa: S301 - database is a trusted service boundary
@@ -63,9 +72,17 @@ class PostgresInbox(InMemoryInbox):
         }
         payload = pickle.dumps(state, protocol=pickle.HIGHEST_PROTOCOL)
         with self._connect() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO inbox_runtime_snapshots (workspace_id, payload, updated_at) "
-                "VALUES (%s, %s, now()) ON CONFLICT (workspace_id) DO UPDATE SET "
-                "payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at",
-                ("production", payload),
-            )
+            self._persist_cursor(cursor, payload)
+
+    def _persist_cursor(self, cursor, payload: bytes | None = None) -> None:
+        if payload is None:
+            state = {
+                name: value for name, value in vars(self).items() if name not in {"_lock", "database_url"}
+            }
+            payload = pickle.dumps(state, protocol=pickle.HIGHEST_PROTOCOL)
+        cursor.execute(
+            "INSERT INTO inbox_runtime_snapshots (workspace_id, payload, updated_at) "
+            "VALUES (%s, %s, now()) ON CONFLICT (workspace_id) DO UPDATE SET "
+            "payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at",
+            ("production", payload),
+        )
