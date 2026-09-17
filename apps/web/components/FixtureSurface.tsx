@@ -14,6 +14,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 function useFixture<T>(load: () => Promise<T>) {
   const [value, setValue] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
+  // Fixture surface loaders are intentionally captured once per route mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load().then(setValue).catch(() => setFailed(true)); }, []);
   return { value, failed };
 }

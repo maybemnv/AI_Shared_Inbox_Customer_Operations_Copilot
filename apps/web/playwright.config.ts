@@ -8,8 +8,7 @@ const pythonCandidates = [
   process.env.PYTHON,
   process.env.PYTHON_EXECUTABLE,
   path.join(rootDir, ".venv", process.platform === "win32" ? "Scripts" : "bin", process.platform === "win32" ? "python.exe" : "python"),
-  "python3",
-  "python",
+  process.platform === "win32" ? "python" : "python3",
 ].filter(Boolean) as string[];
 const pythonPath = pythonCandidates.find((candidate) => !candidate.includes(path.sep) || fs.existsSync(candidate)) ?? "python";
 
