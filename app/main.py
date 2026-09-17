@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 from uuid import uuid4
 
@@ -150,12 +151,16 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
         return await call_next(request)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:3103",
-            "http://127.0.0.1:3103",
-        ],
+        allow_origins=(
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3103",
+                "http://127.0.0.1:3103",
+            ]
+            if is_local_fixture()
+            else [item.strip() for item in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if item.strip()]
+        ),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

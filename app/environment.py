@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 
 class RuntimeConfigurationError(ValueError):
@@ -33,6 +34,9 @@ def validate_runtime() -> None:
         )
     if os.getenv("QUEUE_PROVIDER") not in {"redis", "postgres-outbox"}:
         raise RuntimeConfigurationError("QUEUE_PROVIDER must be redis or postgres-outbox outside fixture mode")
+    origins = [item.strip() for item in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if item.strip()]
+    if any(urlparse(origin).hostname in {"localhost", "127.0.0.1", "::1"} for origin in origins):
+        raise RuntimeConfigurationError("localhost CORS origins are only allowed in APP_ENV=local-fixture")
 
 
 def is_local_fixture() -> bool:
