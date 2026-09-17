@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.fixture import build_freight_delay_event, create_demo_inbox
+from app.environment import is_local_fixture, validate_runtime
 from app.ingestion import (
     ApprovalRequiredError,
     ConversationNotFoundError,
@@ -120,6 +121,7 @@ def _error_response(
 
 
 def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
+    validate_runtime()
     fixed_repository = inbox
     demo_workspace = "demo-workspace"
     seeded_conversation_id = "conversation-ft-204"
@@ -283,6 +285,8 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
 
     @application.post("/api/v1/demo/reset")
     def reset_demo() -> dict[str, str]:
+        if not is_local_fixture():
+            raise HTTPException(status_code=404, detail="fixture reset is disabled")
         repository = get_repository()
         result = repository.reset(build_freight_delay_event())
         return {

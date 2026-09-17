@@ -1,7 +1,9 @@
 from dataclasses import replace
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.environment import RuntimeConfigurationError
 from app.fixture import build_freight_delay_event, create_demo_inbox
 from app.main import create_app
 
@@ -81,3 +83,10 @@ def test_demo_reset_clears_other_workspace_data_and_readyz_checks_seed():
     after_reset = client.get("/readyz")
     assert after_reset.status_code == 200
     assert after_reset.json()["fixture"]["seed_present"] is True
+
+
+def test_fixture_service_does_not_construct_outside_local_fixture(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+
+    with pytest.raises(RuntimeConfigurationError, match="local-fixture"):
+        create_app()
