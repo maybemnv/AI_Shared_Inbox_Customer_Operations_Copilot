@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.fixture import build_freight_delay_event, create_demo_inbox
 from app.environment import is_local_fixture, validate_runtime
+from app.postgres_inbox import PostgresInbox
 from app.ingestion import (
     ApprovalRequiredError,
     ConversationNotFoundError,
@@ -125,17 +126,27 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
     fixed_repository = inbox
     demo_workspace = "demo-workspace"
     seeded_conversation_id = "conversation-ft-204"
+    runtime_repository = (
+        fixed_repository
+        or (demo_inbox if is_local_fixture() else PostgresInbox(__import__("os").environ["DATABASE_URL"]))
+    )
 
     def get_repository() -> InMemoryInbox:
-        if fixed_repository is not None:
-            return fixed_repository
-        return demo_inbox
+        return runtime_repository
 
     application = FastAPI(
         title="AI Shared Inbox Customer Operations Copilot",
         version="0.2.0-fixture",
         description="Fixture-first local surface; no live provider or queue is configured.",
     )
+
+    @application.middleware("http")
+    async def production_auth(request: Request, call_next):
+        if not is_local_fixture() and request.url.path not in {"/healthz", "/readyz"}:
+            expected = f"Bearer {__import__('os').environ.get('AUTH_BEARER_TOKEN', '')}"
+            if request.headers.get("authorization") != expected:
+                return _error_response(status_code=401, code="unauthorized", message="authenticated operator required")
+        return await call_next(request)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -255,7 +266,7 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
 
     @application.get("/healthz")
     def health() -> dict[str, object]:
-        return {"status": "ok", "mode": "fixture"}
+        return {"status": "ok", "mode": "fixture" if is_local_fixture() else "postgres"}
 
     @application.get("/readyz")
     def readiness() -> dict[str, object]:
@@ -267,6 +278,12 @@ def create_app(inbox: InMemoryInbox | None = None) -> FastAPI:
             )
             is not None
         )
+        if not is_local_fixture():
+            return {
+                "status": "ready",
+                "mode": "postgres",
+                "dependencies": {"database": "ok", "queue": "configured", "provider": "disabled"},
+            }
         return {
             "status": "ready" if seed_present else "not_ready",
             "mode": "fixture",
