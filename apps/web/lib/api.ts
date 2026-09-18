@@ -96,11 +96,26 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8103";
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+const API_BASE = configuredApiBase || (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8103" : "");
+
+export function isLocalApiUrl(value: string): boolean {
+  const hostname = new URL(value).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return hostname === "localhost" || hostname === "::1" || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+function apiBaseUrl(): string {
+  if (!API_BASE) throw new ApiError("NEXT_PUBLIC_API_BASE_URL is required outside local fixture development");
+  if (process.env.NODE_ENV === "production") {
+    if (isLocalApiUrl(API_BASE)) {
+      throw new ApiError("localhost API URLs are only allowed in local fixture development");
+    }
+  }
+  return API_BASE.replace(/\/$/, "");
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
     cache: "no-store",

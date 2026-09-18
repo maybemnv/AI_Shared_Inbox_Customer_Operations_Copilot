@@ -198,6 +198,15 @@ create table if not exists public.assignment_rules (
   unique (workspace_id, priority, id)
 );
 
+-- Compatibility persistence for the current aggregate repository. It is
+-- transactionally replaced after each domain mutation and is never selected
+-- by local-fixture mode.
+create table if not exists public.inbox_runtime_snapshots (
+  workspace_id text primary key,
+  payload bytea not null,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists conversations_workspace_status_idx on public.conversations (workspace_id, status, priority);
 create index if not exists activity_workspace_sequence_idx on public.activity_events (workspace_id, sequence);
 create index if not exists sync_jobs_workspace_state_idx on public.sync_jobs (workspace_id, state);

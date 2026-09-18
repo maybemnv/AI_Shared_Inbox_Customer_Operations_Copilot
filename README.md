@@ -39,7 +39,7 @@ The launcher starts the API at `http://127.0.0.1:8103` and the workbench at `htt
 For direct API execution:
 
 ```powershell
-uv run --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
+$env:APP_ENV = "local-fixture"; uv run --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8103
 ```
 
 ## Verification

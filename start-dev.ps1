@@ -25,9 +25,9 @@ function Start-Terminal {
     )
 }
 
-$apiCommand = "uv run --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8103"
+$apiCommand = "`$env:APP_ENV = 'local-fixture'; uv run --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8103"
 $webDirectory = Join-Path $Root "apps\web"
-$webCommand = "`$env:NEXT_PUBLIC_API_BASE_URL = 'http://127.0.0.1:8103'; npm.cmd run dev -- --hostname 127.0.0.1 --port 3103"
+$webCommand = "`$env:APP_ENV = 'local-fixture'; `$env:NEXT_PUBLIC_API_BASE_URL = 'http://127.0.0.1:8103'; npm.cmd run dev -- --hostname 127.0.0.1 --port 3103"
 Start-Terminal "Shared Inbox API" $Root $apiCommand
 Start-Terminal "Shared Inbox Web" $webDirectory $webCommand
 

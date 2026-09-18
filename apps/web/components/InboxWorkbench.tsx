@@ -87,6 +87,8 @@ export function InboxWorkbench({
   };
 
   useEffect(() => {
+    // Initial hydration synchronizes the workbench with the server-backed fixture snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // The demo intentionally loads the persisted fixture snapshot once.
     // eslint-disable-next-line react-hooks/exhaustive-deps

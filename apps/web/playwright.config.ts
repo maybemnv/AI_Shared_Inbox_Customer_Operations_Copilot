@@ -8,8 +8,7 @@ const pythonCandidates = [
   process.env.PYTHON,
   process.env.PYTHON_EXECUTABLE,
   path.join(rootDir, ".venv", process.platform === "win32" ? "Scripts" : "bin", process.platform === "win32" ? "python.exe" : "python"),
-  "python3",
-  "python",
+  process.platform === "win32" ? "python" : "python3",
 ].filter(Boolean) as string[];
 const pythonPath = pythonCandidates.find((candidate) => !candidate.includes(path.sep) || fs.existsSync(candidate)) ?? "python";
 
@@ -36,7 +35,7 @@ export default defineConfig({
     },
     {
       name: "fixture",
-      grep: /fixture routes|visible polling|secondary routes|draft failure simulation|explicit conversation selection|customer route requests/,
+      grep: /fixture routes|visible polling|secondary routes|draft failure simulation|explicit conversation selection|customer route requests|runtime boundary/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
     },
   ],
@@ -46,6 +45,7 @@ export default defineConfig({
       cwd: __dirname,
       env: {
         ...process.env,
+        APP_ENV: "local-fixture",
         NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:8103",
       },
       url: "http://127.0.0.1:3103/inbox",
@@ -55,8 +55,9 @@ export default defineConfig({
     {
       command: `"${pythonPath}" -m uvicorn app.main:app --host 127.0.0.1 --port 8103`,
       cwd: rootDir,
+      env: { ...process.env, APP_ENV: "local-fixture" },
       url: "http://127.0.0.1:8103/readyz",
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
   ],
