@@ -1,6 +1,13 @@
 import pytest
+from pathlib import Path
 
 from app.environment import RuntimeConfigurationError, validate_runtime
+
+
+def test_fixture_readme_direct_launch_selects_local_fixture():
+    readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+
+    assert '$env:APP_ENV = "local-fixture"; uv run' in readme
 
 
 def test_non_fixture_runtime_requires_durable_dependencies(monkeypatch):

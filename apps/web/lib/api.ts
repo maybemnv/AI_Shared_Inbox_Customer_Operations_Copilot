@@ -99,11 +99,15 @@ export class ApiError extends Error {
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const API_BASE = configuredApiBase || (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8103" : "");
 
+export function isLocalApiUrl(value: string): boolean {
+  const hostname = new URL(value).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return hostname === "localhost" || hostname === "::1" || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
 function apiBaseUrl(): string {
   if (!API_BASE) throw new ApiError("NEXT_PUBLIC_API_BASE_URL is required outside local fixture development");
   if (process.env.NODE_ENV === "production") {
-    const hostname = new URL(API_BASE).hostname;
-    if (["localhost", "127.0.0.1", "::1"].includes(hostname)) {
+    if (isLocalApiUrl(API_BASE)) {
       throw new ApiError("localhost API URLs are only allowed in local fixture development");
     }
   }
